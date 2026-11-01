@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block title %}Settings{% endblock %}
+{% block page_title %}Settings{% endblock %}
+{% block breadcrumb %}/ <span>Settings</span>{% endblock %}
+
+{% block content %}
+<div class="settings-grid">
+    <!-- Investigator Settings -->
+    <div class="card">
+        <div class="card-header">
+            <h3><i class="fas fa-user-shield"></i> Investigator Settings</h3>
+        </div>
+        <div class="card-body">
+            <div class="setting-item">
+                <label>Investigator Name</label>
+                <p class="setting-value">{{ settings.get('investigator_name', 'Investigator') }}</p>
+            </div>
+            <div class="setting-item">
+                <label>Organization</label>
+                <p class="setting-value">{{ settings.get('organization', 'Cybersecurity Lab') }}</p>
+            </div>
+            <div class="info-box">
+                <i class="fas fa-info-circle"></i>
+                <span>Settings management will be implemented in a future update.</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Application Info -->
+    <div class="card">
+        <div class="card-header">
+            <h3><i class="fas fa-info-circle"></i> Application Info</h3>
+        </div>
+        <div class="card-body">
+            <div class="setting-item">
+                <label>Application</label>
+                <p class="setting-value">Digital Forensics Toolkit</p>
+            </div>
+            <div class="setting-item">
+                <label>Version</label>
+                <p class="setting-value">1.0.0</p>
+            </div>
+            <div class="setting-item">
+                <label>Max Upload Size</label>
+                <p class="setting-value">50 MB</p>
+            </div>
+            <div class="setting-item">
+                <label>Database</label>
+                <p class="setting-value">SQLite 3.45.1</p>
+            </div>
+            <div class="setting-item">
+                <label>Python</label>
+                <p class="setting-value">3.12.3</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Security Notice -->
+    <div class="card full-width">
+        <div class="card-header">
+            <h3><i class="fas fa-shield-halved"></i> Security & Legal Notice</h3>
+        </div>
+        <div class="card-body">
+            <div class="disclaimer-content">
+                <p><strong>Educational Toolkit Disclaimer:</strong></p>
+                <ul>
+                    <li>This toolkit is designed for <strong>educational and authorized forensic investigations only</strong>.</li>
+                    <li>Only analyze files and systems you <strong>own or have authorization</strong> to investigate.</li>
+                    <li>This is <strong>not a certified forensic suite</strong>. All findings require human verification.</li>
+                    <li>Original evidence files are treated as <strong>read-only</strong> and are never modified.</li>
+                    <li>Use test evidence for college demonstrations.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

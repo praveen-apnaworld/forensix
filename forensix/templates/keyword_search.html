@@ -1,0 +1,485 @@
+{% extends "base.html" %}
+
+{% block title %}Keyword Search | ForensiX Toolkit{% endblock %}
+{% block page_title %}Forensic Keyword Search Engine{% endblock %}
+{% block breadcrumb %}/ <span>Keyword Search</span>{% endblock %}
+
+{% block content %}
+<div class="keyword-search-container">
+
+    <!-- SEARCH FORM CARD -->
+    <div class="card form-card" style="margin-bottom: 24px;">
+        <div class="card-header">
+            <h3><i class="fas fa-magnifying-glass" style="color: #38bdf8;"></i> Search Query & Evidence Configuration</h3>
+        </div>
+        <div class="card-body">
+            {% if error %}
+            <div class="alert alert-error" style="margin-bottom: 20px;">
+                <i class="fas fa-circle-exclamation"></i>
+                <div>
+                    <strong>Search Validation Error:</strong> {{ error }}
+                </div>
+            </div>
+            {% endif %}
+
+            <form method="POST" action="{{ url_for('keyword_search') }}" enctype="multipart/form-data" id="keywordSearchForm">
+                <!-- Row 1: Search Query -->
+                <div class="form-group" style="margin-bottom: 20px;">
+                    <label for="search_query" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <span><i class="fas fa-terminal text-cyan"></i> <strong>Search Keywords</strong> (Single or Multiple terms)</span>
+                        <span class="file-hint">Enter terms separated by commas or new lines</span>
+                    </label>
+                    <textarea class="form-control" id="search_query" name="search_query" rows="3" 
+                              placeholder="e.g.&#10;password&#10;admin&#10;sarah.chen&#10;investigation" 
+                              style="font-family: monospace; font-size: 13.5px; background: #0f172a; border-color: #334155; color: #f8fafc;" required>{{ search_query }}</textarea>
+                </div>
+
+                <!-- Row 2: Search Parameters Grid -->
+                <div class="search-options-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; margin-bottom: 20px;">
+                    
+                    <!-- Match Mode & Case Sensitivity -->
+                    <div class="option-box" style="background: rgba(15, 23, 42, 0.6); padding: 16px; border-radius: 8px; border: 1px solid #334155;">
+                        <label style="display: block; font-weight: 600; margin-bottom: 12px; color: #e2e8f0;">
+                            <i class="fas fa-sliders text-cyan"></i> Matching Logic
+                        </label>
+                        <div style="display: flex; gap: 16px; margin-bottom: 14px;">
+                            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                                <input type="radio" name="match_mode" value="ANY" {% if match_mode != 'ALL' %}checked{% endif %}>
+                                <span>Match <strong>ANY</strong> (OR)</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                                <input type="radio" name="match_mode" value="ALL" {% if match_mode == 'ALL' %}checked{% endif %}>
+                                <span>Match <strong>ALL</strong> (AND)</span>
+                            </label>
+                        </div>
+                        <div style="padding-top: 10px; border-top: 1px solid #334155;">
+                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                <input type="checkbox" name="case_sensitive" value="1" {% if case_sensitive %}checked{% endif %}>
+                                <span>Case-sensitive search</span>
+                            </label>
+                            <span class="file-hint" style="display: block; margin-top: 4px; margin-left: 22px;">Default: Case-insensitive</span>
+                        </div>
+                    </div>
+
+                    <!-- File Type Filter -->
+                    <div class="option-box" style="background: rgba(15, 23, 42, 0.6); padding: 16px; border-radius: 8px; border: 1px solid #334155;">
+                        <label for="file_type_filter" style="display: block; font-weight: 600; margin-bottom: 8px; color: #e2e8f0;">
+                            <i class="fas fa-filter text-cyan"></i> File Type Filter
+                        </label>
+                        <select class="form-control" id="file_type_filter" name="file_type_filter" style="background: #0f172a; border-color: #334155; color: #f8fafc;">
+                            <option value="ALL" {% if file_type_filter == 'all' or file_type_filter == 'ALL' %}selected{% endif %}>All Supported Types (TXT, PDF, DOCX, CSV, LOG, JSON)</option>
+                            <option value="txt" {% if file_type_filter == 'txt' %}selected{% endif %}>Text Files (.txt)</option>
+                            <option value="log" {% if file_type_filter == 'log' %}selected{% endif %}>System Logs (.log)</option>
+                            <option value="csv" {% if file_type_filter == 'csv' %}selected{% endif %}>CSV Records (.csv)</option>
+                            <option value="json" {% if file_type_filter == 'json' %}selected{% endif %}>JSON Payloads (.json)</option>
+                            <option value="pdf" {% if file_type_filter == 'pdf' %}selected{% endif %}>PDF Documents (.pdf)</option>
+                            <option value="docx" {% if file_type_filter == 'docx' %}selected{% endif %}>Word Documents (.docx)</option>
+                        </select>
+                        <span class="file-hint" style="display: block; margin-top: 8px;">
+                            <i class="fas fa-shield-halved"></i> Unsupported binary files (images, EXEs) are automatically reported & skipped.
+                        </span>
+                    </div>
+
+                    <!-- Evidence Source Selector -->
+                    <div class="option-box" style="background: rgba(15, 23, 42, 0.6); padding: 16px; border-radius: 8px; border: 1px solid #334155;">
+                        <label style="display: block; font-weight: 600; margin-bottom: 10px; color: #e2e8f0;">
+                            <i class="fas fa-box-archive text-cyan"></i> Evidence Source
+                        </label>
+                        <div style="display: flex; flex-direction: column; gap: 8px;">
+                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                <input type="radio" name="evidence_source" value="sample" id="src_sample" onchange="toggleSourceUI()" {% if evidence_source == 'sample' %}checked{% endif %}>
+                                <span>Preloaded Sample Evidence Suite (<code>sample_evidence/</code>)</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                <input type="radio" name="evidence_source" value="upload" id="src_upload" onchange="toggleSourceUI()" {% if evidence_source == 'upload' %}checked{% endif %}>
+                                <span>Direct File Upload or ZIP Evidence Archive</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                <input type="radio" name="evidence_source" value="case" id="src_case" onchange="toggleSourceUI()" {% if evidence_source == 'case' %}checked{% endif %}>
+                                <span>Investigation Case from Database</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Conditional Evidence Source Inputs -->
+                <!-- 1. Direct Upload Box -->
+                <div id="sourceUploadSection" style="display: {% if evidence_source == 'upload' %}block{% else %}none{% endif %}; margin-bottom: 20px;">
+                    <div class="file-drop-zone" id="fileDropZone" style="border: 2px dashed #475569; border-radius: 8px; padding: 24px; text-align: center; background: rgba(15, 23, 42, 0.4); cursor: pointer;">
+                        <i class="fas fa-cloud-arrow-up" style="font-size: 32px; color: #38bdf8; margin-bottom: 8px;"></i>
+                        <p style="font-size: 14px; margin-bottom: 6px;"><strong>Select or drag & drop evidence files</strong> (Multiple files, or .zip archive)</p>
+                        <span class="file-hint">Supports TXT, LOG, CSV, JSON, PDF, DOCX (Max 50MB)</span>
+                        <input type="file" id="filesInput" name="files" multiple style="display: none;" onchange="handleFileSelect(this)">
+                        <div id="fileSelectionFeedback" style="margin-top: 10px; font-weight: 600; color: #10b981; display: none;"></div>
+                    </div>
+                </div>
+
+                <!-- 2. Case Selector Dropdown -->
+                <div id="sourceCaseSection" style="display: {% if evidence_source == 'case' %}block{% else %}none{% endif %}; margin-bottom: 20px;">
+                    <label for="case_id" style="font-weight: 600; margin-bottom: 8px; display: block;">Select Investigation Case:</label>
+                    {% if cases and cases|length > 0 %}
+                    <select class="form-control" name="case_id" id="case_id" style="background: #0f172a; border-color: #334155; color: #f8fafc;">
+                        <option value="">-- Choose Case --</option>
+                        {% for c in cases %}
+                        <option value="{{ c['case_id'] }}" {% if selected_case_id == c['case_id'] %}selected{% endif %}>
+                            {{ c['case_id'] }} - {{ c['title'] }} ({{ c['investigator'] }})
+                        </option>
+                        {% endfor %}
+                    </select>
+                    {% else %}
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle"></i> No registered cases found in database. Please use the <strong>Preloaded Sample Evidence Suite</strong> or <strong>Direct File Upload</strong>.
+                    </div>
+                    {% endif %}
+                </div>
+
+                <!-- Action Buttons & Spinner -->
+                <div style="display: flex; align-items: center; gap: 12px; margin-top: 24px;">
+                    <button type="submit" class="btn btn-primary" id="searchSubmitBtn">
+                        <i class="fas fa-magnifying-glass"></i> <span id="searchBtnText">Execute Search</span>
+                    </button>
+                    <a href="{{ url_for('keyword_search') }}" class="btn btn-secondary">
+                        <i class="fas fa-arrow-rotate-left"></i> Clear Search
+                    </a>
+                    <div id="searchProgressIndicator" style="display: none; align-items: center; gap: 8px; margin-left: 12px; color: #38bdf8;">
+                        <i class="fas fa-circle-notch fa-spin"></i>
+                        <span>Scanning evidence bitstreams...</span>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- SEARCH RESULTS SECTION -->
+    {% if results %}
+    <div class="search-results-wrapper" id="searchResultsWrapper">
+
+        <!-- DASHBOARD SUMMARY CARDS -->
+        <div class="dashboard-stats-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 16px; margin-bottom: 24px;">
+            <!-- Metric 1: Total Scanned -->
+            <div class="metric-card" style="background: #1e293b; border-radius: 8px; padding: 18px; border: 1px solid #334155; display: flex; align-items: center; gap: 16px;">
+                <div style="width: 48px; height: 48px; border-radius: 8px; background: rgba(56, 189, 248, 0.15); display: flex; align-items: center; justify-content: center; font-size: 22px; color: #38bdf8;">
+                    <i class="fas fa-folder-tree"></i>
+                </div>
+                <div>
+                    <div style="font-size: 11px; text-transform: uppercase; color: #94a3b8; font-weight: 600; letter-spacing: 0.5px;">Files Scanned</div>
+                    <div style="font-size: 24px; font-weight: 700; color: #f8fafc;">{{ results.total_files_scanned }}</div>
+                </div>
+            </div>
+
+            <!-- Metric 2: Matching Files -->
+            <div class="metric-card" style="background: #1e293b; border-radius: 8px; padding: 18px; border: 1px solid #334155; display: flex; align-items: center; gap: 16px;">
+                <div style="width: 48px; height: 48px; border-radius: 8px; background: rgba(16, 185, 129, 0.15); display: flex; align-items: center; justify-content: center; font-size: 22px; color: #10b981;">
+                    <i class="fas fa-file-circle-check"></i>
+                </div>
+                <div>
+                    <div style="font-size: 11px; text-transform: uppercase; color: #94a3b8; font-weight: 600; letter-spacing: 0.5px;">Matching Files</div>
+                    <div style="font-size: 24px; font-weight: 700; color: #10b981;">{{ results.total_matching_files }}</div>
+                </div>
+            </div>
+
+            <!-- Metric 3: Total Occurrences -->
+            <div class="metric-card" style="background: #1e293b; border-radius: 8px; padding: 18px; border: 1px solid #334155; display: flex; align-items: center; gap: 16px;">
+                <div style="width: 48px; height: 48px; border-radius: 8px; background: rgba(245, 158, 11, 0.15); display: flex; align-items: center; justify-content: center; font-size: 22px; color: #f59e0b;">
+                    <i class="fas fa-bullseye"></i>
+                </div>
+                <div>
+                    <div style="font-size: 11px; text-transform: uppercase; color: #94a3b8; font-weight: 600; letter-spacing: 0.5px;">Occurrences</div>
+                    <div style="font-size: 24px; font-weight: 700; color: #f59e0b;">{{ results.total_occurrences }}</div>
+                </div>
+            </div>
+
+            <!-- Metric 4: Unsupported/Skipped -->
+            <div class="metric-card" style="background: #1e293b; border-radius: 8px; padding: 18px; border: 1px solid #334155; display: flex; align-items: center; gap: 16px;">
+                <div style="width: 48px; height: 48px; border-radius: 8px; background: rgba(148, 163, 184, 0.15); display: flex; align-items: center; justify-content: center; font-size: 22px; color: #94a3b8;">
+                    <i class="fas fa-ban"></i>
+                </div>
+                <div>
+                    <div style="font-size: 11px; text-transform: uppercase; color: #94a3b8; font-weight: 600; letter-spacing: 0.5px;">Unsupported Files</div>
+                    <div style="font-size: 24px; font-weight: 700; color: #94a3b8;">{{ results.unsupported_or_unreadable_count }}</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- KEYWORD OCCURRENCE SUMMARY CHIPS -->
+        <div class="card" style="margin-bottom: 24px;">
+            <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                <h3><i class="fas fa-tags text-cyan"></i> Keyword Term Breakdown</h3>
+                <div style="display: flex; gap: 10px;">
+                    <!-- Export JSON -->
+                    <form method="POST" action="{{ url_for('keyword_search_export_json') }}" style="display: inline;">
+                        <input type="hidden" name="export_data" value="{{ export_json_payload }}">
+                        <button type="submit" class="btn btn-secondary btn-sm" title="Download results as structured JSON">
+                            <i class="fas fa-download"></i> Export JSON
+                        </button>
+                    </form>
+                    <!-- Export CSV -->
+                    <form method="POST" action="{{ url_for('keyword_search_export_csv') }}" style="display: inline;">
+                        <input type="hidden" name="export_data" value="{{ export_json_payload }}">
+                        <button type="submit" class="btn btn-secondary btn-sm" title="Download results as spreadsheet CSV">
+                            <i class="fas fa-file-csv"></i> Export CSV
+                        </button>
+                    </form>
+                </div>
+            </div>
+            <div class="card-body">
+                <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
+                    <span style="font-size: 13px; color: #94a3b8; font-weight: 600;">Scanned Terms:</span>
+                    {% for kw, cnt in results.keyword_counts.items() %}
+                    <span class="comp-chip {% if cnt > 0 %}chip-identical{% else %}chip-missing{% endif %}" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 20px; font-size: 12.5px; font-family: monospace;">
+                        <i class="fas {% if cnt > 0 %}fa-check-circle text-success{% else %}fa-circle-xmark{% endif %}"></i>
+                        <strong>{{ kw }}</strong>: {{ cnt }} match{% if cnt != 1 %}es{% endif %}
+                    </span>
+                    {% endfor %}
+                    <span style="font-size: 12px; color: #64748b; margin-left: auto;">
+                        Mode: <strong>{{ results.match_mode }}</strong> | 
+                        Case: <strong>{% if results.case_sensitive %}Sensitive{% else %}Insensitive{% endif %}</strong>
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <!-- SEARCH RESULTS TABLE -->
+        <div class="card" style="margin-bottom: 24px;">
+            <div class="card-header">
+                <h3><i class="fas fa-table-list text-cyan"></i> Matching Evidence Records ({{ results.results|length }} Files)</h3>
+            </div>
+            <div class="card-body" style="padding: 0;">
+                {% if results.results and results.results|length > 0 %}
+                <div style="overflow-x: auto;">
+                    <table class="data-table" style="width: 100%; border-collapse: collapse;">
+                        <thead>
+                            <tr style="background: rgba(15, 23, 42, 0.8);">
+                                <th style="width: 20%; padding: 12px 16px;">Filename</th>
+                                <th style="width: 8%; padding: 12px 16px;">Type</th>
+                                <th style="width: 14%; padding: 12px 16px;">Keywords Found</th>
+                                <th style="width: 8%; padding: 12px 16px; text-align: center;">Hits</th>
+                                <th style="width: 12%; padding: 12px 16px;">Primary Location</th>
+                                <th style="width: 30%; padding: 12px 16px;">Context Preview</th>
+                                <th style="width: 8%; padding: 12px 16px; text-align: center;">Details</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for f_res in results.results %}
+                            <tr style="border-bottom: 1px solid #334155;">
+                                <td style="padding: 14px 16px; font-family: monospace; font-size: 13px; font-weight: 600; color: #38bdf8;">
+                                    <i class="fas fa-file-lines" style="margin-right: 6px;"></i>{{ f_res.filename }}
+                                </td>
+                                <td style="padding: 14px 16px;">
+                                    <span class="badge badge-info">{{ f_res.file_type }}</span>
+                                </td>
+                                <td style="padding: 14px 16px;">
+                                    {% for kw, cnt in f_res.keyword_counts.items() %}
+                                    {% if cnt > 0 %}
+                                    <span class="badge badge-success" style="font-family: monospace; font-size: 11px; margin-right: 4px; margin-bottom: 4px; display: inline-block;">
+                                        {{ kw }} ({{ cnt }})
+                                    </span>
+                                    {% endif %}
+                                    {% endfor %}
+                                </td>
+                                <td style="padding: 14px 16px; text-align: center; font-weight: 700; color: #f59e0b;">
+                                    {{ f_res.total_occurrences }}
+                                </td>
+                                <td style="padding: 14px 16px; font-size: 12.5px; color: #94a3b8;">
+                                    {% if f_res.matches and f_res.matches|length > 0 %}
+                                    <span class="badge badge-secondary" style="font-family: monospace;">
+                                        {{ f_res.matches[0].location_label }}
+                                    </span>
+                                    {% else %}
+                                    —
+                                    {% endif %}
+                                </td>
+                                <td style="padding: 14px 16px; font-family: monospace; font-size: 12.5px; color: #cbd5e1; line-height: 1.5;">
+                                    {% if f_res.matches and f_res.matches|length > 0 %}
+                                    <div class="kw-context-box" style="background: rgba(15, 23, 42, 0.7); padding: 8px 12px; border-radius: 6px; border: 1px solid #334155; word-break: break-word;">
+                                        {{ f_res.matches[0].highlighted_html|safe }}
+                                    </div>
+                                    {% else %}
+                                    <span class="text-muted">No snippet available</span>
+                                    {% endif %}
+                                </td>
+                                <td style="padding: 14px 16px; text-align: center;">
+                                    <button type="button" class="btn btn-secondary btn-sm" onclick="openFileDetailsModal({{ loop.index0 }})" title="View all occurrences for this file">
+                                        <i class="fas fa-eye"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="empty-state" style="padding: 40px; text-align: center;">
+                    <i class="fas fa-file-circle-xmark" style="font-size: 40px; color: #64748b; margin-bottom: 12px;"></i>
+                    <h4 style="color: #cbd5e1; margin-bottom: 6px;">No Keyword Occurrences Found</h4>
+                    <p style="color: #94a3b8; font-size: 13.5px; max-width: 500px; margin: 0 auto;">
+                        None of the scanned evidence files contained the queried terms under the selected matching criteria.
+                    </p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- UNSUPPORTED / SKIPPED FILES ALERT -->
+        {% if results.unsupported_files and results.unsupported_files|length > 0 %}
+        <div class="card" style="margin-bottom: 24px; border-left: 4px solid #64748b;">
+            <div class="card-header" style="background: rgba(15, 23, 42, 0.4);">
+                <h4 style="color: #94a3b8; font-size: 14px; margin: 0;">
+                    <i class="fas fa-ban" style="margin-right: 6px;"></i> Unsupported or Unreadable Files Handled Safely ({{ results.unsupported_files|length }})
+                </h4>
+            </div>
+            <div class="card-body">
+                <p style="font-size: 12.5px; color: #94a3b8; margin-bottom: 12px;">
+                    In accordance with forensic standards, non-textual binary files (e.g., images, compiled executables, raw byte containers) were safely skipped without attempting arbitrary string searches:
+                </p>
+                <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                    {% for uf in results.unsupported_files %}
+                    <span class="badge badge-secondary" style="font-family: monospace; font-size: 11.5px; padding: 6px 10px;" title="{{ uf.error }}">
+                        <i class="fas fa-shield-halved" style="margin-right: 4px;"></i>{{ uf.filename }} ({{ uf.file_type }}): {{ uf.error[:45] }}...
+                    </span>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+    </div>
+
+    <!-- MODAL FOR FILE OCCURRENCES DETAILS -->
+    <div class="modal-overlay" id="fileDetailsModal" style="display: none;">
+        <div class="modal" style="max-width: 850px; width: 90%;">
+            <div class="modal-header">
+                <h3 id="modalFileTitle"><i class="fas fa-file-magnifying-glass text-cyan"></i> Evidence Matches</h3>
+                <button type="button" class="modal-close" onclick="closeFileDetailsModal()">
+                    <i class="fas fa-xmark"></i>
+                </button>
+            </div>
+            <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
+                <div id="modalContentContainer"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Store results data for JavaScript modal interaction -->
+    <script id="searchResultsJson" type="application/json">
+        {{ results.results|tojson|safe }}
+    </script>
+    {% endif %}
+
+</div>
+
+<script>
+// Toggle Evidence Source Display
+function toggleSourceUI() {
+    var srcUpload = document.getElementById('src_upload').checked;
+    var srcCase = document.getElementById('src_case').checked;
+    
+    document.getElementById('sourceUploadSection').style.display = srcUpload ? 'block' : 'none';
+    document.getElementById('sourceCaseSection').style.display = srcCase ? 'block' : 'none';
+}
+
+// File drop zone interaction
+var dropZone = document.getElementById('fileDropZone');
+var fileInput = document.getElementById('filesInput');
+
+if (dropZone && fileInput) {
+    dropZone.addEventListener('click', function() {
+        fileInput.click();
+    });
+
+    dropZone.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        dropZone.style.borderColor = '#38bdf8';
+        dropZone.style.background = 'rgba(56, 189, 248, 0.1)';
+    });
+
+    dropZone.addEventListener('dragleave', function(e) {
+        e.preventDefault();
+        dropZone.style.borderColor = '#475569';
+        dropZone.style.background = 'rgba(15, 23, 42, 0.4)';
+    });
+
+    dropZone.addEventListener('drop', function(e) {
+        e.preventDefault();
+        dropZone.style.borderColor = '#475569';
+        dropZone.style.background = 'rgba(15, 23, 42, 0.4)';
+        if (e.dataTransfer.files.length > 0) {
+            fileInput.files = e.dataTransfer.files;
+            handleFileSelect(fileInput);
+        }
+    });
+}
+
+function handleFileSelect(input) {
+    var feedback = document.getElementById('fileSelectionFeedback');
+    if (input.files && input.files.length > 0) {
+        feedback.style.display = 'block';
+        feedback.innerHTML = '<i class="fas fa-check-circle"></i> ' + input.files.length + ' file(s) selected for scanning';
+    } else {
+        feedback.style.display = 'none';
+    }
+}
+
+// Search progress indicator
+var searchForm = document.getElementById('keywordSearchForm');
+if (searchForm) {
+    searchForm.addEventListener('submit', function() {
+        var btn = document.getElementById('searchSubmitBtn');
+        var text = document.getElementById('searchBtnText');
+        var progress = document.getElementById('searchProgressIndicator');
+        if (btn) btn.disabled = true;
+        if (text) text.innerText = 'Searching...';
+        if (progress) progress.style.display = 'inline-flex';
+    });
+}
+
+// Modal inspection
+var fileResultsData = [];
+var resultsScript = document.getElementById('searchResultsJson');
+if (resultsScript) {
+    try {
+        fileResultsData = JSON.parse(resultsScript.textContent);
+    } catch(e) {
+        console.error('Failed to parse search results json', e);
+    }
+}
+
+function openFileDetailsModal(index) {
+    var fileItem = fileResultsData[index];
+    if (!fileItem) return;
+
+    document.getElementById('modalFileTitle').innerHTML = '<i class="fas fa-file-magnifying-glass text-cyan"></i> ' + fileItem.filename + ' (' + fileItem.total_occurrences + ' Matches)';
+    
+    var html = '<div style="margin-bottom: 16px;">';
+    html += '<span class="badge badge-info" style="margin-right: 8px;">' + fileItem.file_type + '</span>';
+    html += '<span class="badge badge-warning">' + fileItem.total_occurrences + ' Total Hits</span>';
+    html += '</div>';
+
+    html += '<table class="data-table" style="width: 100%; border-collapse: collapse;">';
+    html += '<thead><tr style="background: #0f172a;"><th style="width: 20%; padding: 10px;">Keyword</th><th style="width: 25%; padding: 10px;">Location</th><th style="width: 55%; padding: 10px;">Context Preview</th></tr></thead>';
+    html += '<tbody>';
+
+    if (fileItem.matches && fileItem.matches.length > 0) {
+        for (var i = 0; i < fileItem.matches.length; i++) {
+            var m = fileItem.matches[i];
+            html += '<tr style="border-bottom: 1px solid #334155;">';
+            html += '<td style="padding: 10px; font-family: monospace; font-weight: 600; color: #10b981;">' + m.keyword + '</td>';
+            html += '<td style="padding: 10px; font-family: monospace; font-size: 12px; color: #94a3b8;"><span class="badge badge-secondary">' + m.location_label + '</span></td>';
+            html += '<td style="padding: 10px; font-family: monospace; font-size: 12px; color: #cbd5e1; line-height: 1.4;"><div class="kw-context-box" style="background: rgba(15, 23, 42, 0.7); padding: 6px 10px; border-radius: 4px; border: 1px solid #334155;">' + m.highlighted_html + '</div></td>';
+            html += '</tr>';
+        }
+    } else {
+        html += '<tr><td colspan="3" style="padding: 20px; text-align: center; color: #94a3b8;">No matches recorded</td></tr>';
+    }
+
+    html += '</tbody></table>';
+
+    document.getElementById('modalContentContainer').innerHTML = html;
+    document.getElementById('fileDetailsModal').style.display = 'flex';
+}
+
+function closeFileDetailsModal() {
+    document.getElementById('fileDetailsModal').style.display = 'none';
+}
+</script>
+{% endblock %}

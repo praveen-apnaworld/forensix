@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+
+{% block title %}Evidence Manager{% endblock %}
+{% block page_title %}Evidence Inventory{% endblock %}
+{% block breadcrumb %}/ <span>Evidence Manager</span>{% endblock %}
+
+{% block content %}
+<div class="evidence-container">
+
+    <!-- FLASH NOTIFICATIONS -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+            <div class="alert alert-{{ 'success' if category == 'success' else 'danger' if category == 'error' else 'info' }}" style="margin-bottom: 20px;">
+                <i class="fas {{ 'fa-check-circle' if category == 'success' else 'fa-triangle-exclamation' if category == 'error' else 'fa-info-circle' }}"></i>
+                {{ message }}
+            </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <div class="page-actions" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <div>
+            <h3 style="margin: 0;"><i class="fas fa-boxes-stacked text-cyan"></i> Registered Case Evidence</h3>
+            <span class="file-hint">Forensic evidence inventory with cryptographic baselines and custody records.</span>
+        </div>
+        {% if cases and cases|length > 0 %}
+        <button class="btn btn-primary" onclick="document.getElementById('registerModal').classList.add('show')">
+            <i class="fas fa-file-circle-plus"></i> Register Evidence File
+        </button>
+        {% endif %}
+    </div>
+
+    {% if evidence_list and evidence_list|length > 0 %}
+    <div class="card">
+        <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+            <h3 style="margin: 0;"><i class="fas fa-list"></i> Evidence Registry ({{ evidence_list|length }} items)</h3>
+        </div>
+        <div class="card-body">
+            <div style="overflow-x: auto;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Evidence ID</th>
+                            <th>Case Reference</th>
+                            <th>Filename</th>
+                            <th>Type</th>
+                            <th>File Size</th>
+                            <th>Acquisition Method</th>
+                            <th>Added At</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for ev in evidence_list %}
+                        <tr>
+                            <td><code>{{ ev['evidence_id'] }}</code></td>
+                            <td><span class="badge badge-secondary">{{ ev['case_number'] }}</span></td>
+                            <td style="font-weight: 600; color: #f8fafc;">{{ ev['filename'] }}</td>
+                            <td><span class="badge badge-info">{{ ev['file_type'] or 'BIN' }}</span></td>
+                            <td style="font-family: monospace; font-size: 12px;">{{ (ev['file_size'] / 1024)|round(1) }} KB</td>
+                            <td style="font-size: 12px; color: #cbd5e1;">{{ ev['acquisition_method'] or 'Direct Acquisition' }}</td>
+                            <td style="font-size: 12px; color: #94a3b8;">{{ ev['added_at'][:19] }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="card">
+        <div class="card-body">
+            <div class="empty-state large" style="text-align: center; padding: 40px;">
+                <i class="fas fa-boxes-stacked" style="font-size: 42px; color: #64748b; margin-bottom: 12px;"></i>
+                <h3 style="color: #cbd5e1;">No Evidence Files Registered Yet</h3>
+                <p style="color: #94a3b8; max-width: 480px; margin: 0 auto 16px auto;">
+                    Register digital evidence files seized during forensic intake to begin hash auditing, metadata extraction, and report compilation.
+                </p>
+                {% if cases and cases|length > 0 %}
+                <button class="btn btn-primary" onclick="document.getElementById('registerModal').classList.add('show')">
+                    <i class="fas fa-file-circle-plus"></i> Register First Evidence File
+                </button>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+</div>
+
+<!-- REGISTER EVIDENCE MODAL -->
+{% if cases and cases|length > 0 %}
+<div class="modal-overlay" id="registerModal">
+    <div class="modal" style="max-width: 520px; background: #1e293b; border: 1px solid #334155; border-radius: 8px; color: #f8fafc;">
+        <div class="modal-header" style="border-bottom: 1px solid #334155; padding: 16px 20px; display: flex; justify-content: space-between; align-items: center;">
+            <h3 style="margin: 0; font-size: 16px; color: #38bdf8;"><i class="fas fa-file-circle-plus"></i> Register Evidence Item</h3>
+            <button class="modal-close" type="button" onclick="document.getElementById('registerModal').classList.remove('show')" style="background: none; border: none; color: #94a3b8; font-size: 18px; cursor: pointer;">
+                <i class="fas fa-xmark"></i>
+            </button>
+        </div>
+        <form method="POST" action="{{ url_for('register_evidence') }}" enctype="multipart/form-data">
+            <div class="modal-body" style="padding: 20px;">
+                <div style="margin-bottom: 14px;">
+                    <label style="display: block; font-size: 13px; font-weight: 600; color: #94a3b8; margin-bottom: 6px;">
+                        Target Investigation Case <span style="color: #ef4444;">*</span>:
+                    </label>
+                    <select name="case_id" required class="form-control" style="background: #0f172a; border-color: #334155; color: #f8fafc;">
+                        {% for c in cases %}
+                        <option value="{{ c['id'] }}">{{ c['case_id'] }} — {{ c['title'] }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div style="margin-bottom: 14px;">
+                    <label style="display: block; font-size: 13px; font-weight: 600; color: #94a3b8; margin-bottom: 6px;">
+                        Select Evidence File <span style="color: #ef4444;">*</span>:
+                    </label>
+                    <input type="file" name="evidence_file" required class="form-control" style="background: #0f172a; border-color: #334155; color: #f8fafc; padding: 7px 10px;" />
+                </div>
+                <div style="margin-bottom: 14px;">
+                    <label style="display: block; font-size: 13px; font-weight: 600; color: #94a3b8; margin-bottom: 6px;">
+                        Evidence Description:
+                    </label>
+                    <input type="text" name="description" placeholder="e.g. Seized employee laptop drive image" class="form-control" style="background: #0f172a; border-color: #334155; color: #f8fafc;" />
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div>
+                        <label style="display: block; font-size: 12.5px; font-weight: 600; color: #94a3b8; margin-bottom: 6px;">
+                            Acquisition Method:
+                        </label>
+                        <input type="text" name="acquisition_method" value="Logical Acquisition" class="form-control" style="background: #0f172a; border-color: #334155; color: #f8fafc;" />
+                    </div>
+                    <div>
+                        <label style="display: block; font-size: 12.5px; font-weight: 600; color: #94a3b8; margin-bottom: 6px;">
+                            Evidence Source:
+                        </label>
+                        <input type="text" name="source" value="Corporate Workstation Seizure" class="form-control" style="background: #0f172a; border-color: #334155; color: #f8fafc;" />
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer" style="border-top: 1px solid #334155; padding: 12px 20px; display: flex; justify-content: flex-end; gap: 10px;">
+                <button type="button" class="btn btn-secondary" onclick="document.getElementById('registerModal').classList.remove('show')">Cancel</button>
+                <button type="submit" class="btn btn-primary"><i class="fas fa-upload"></i> Upload & Register</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,237 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block content %}
+<!-- ============================================ -->
+<!-- STATISTICS CARDS                              -->
+<!-- Shows REAL counts from database, NOT fake     -->
+<!-- ============================================ -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-icon cases-icon">
+            <i class="fas fa-folder-open"></i>
+        </div>
+        <div class="stat-info">
+            <h3 class="stat-number">{{ total_cases }}</h3>
+            <p class="stat-label">Total Cases</p>
+        </div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-icon evidence-icon">
+            <i class="fas fa-box-archive"></i>
+        </div>
+        <div class="stat-info">
+            <h3 class="stat-number">{{ total_evidence }}</h3>
+            <p class="stat-label">Evidence Files</p>
+        </div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-icon reports-icon">
+            <i class="fas fa-file-pdf"></i>
+        </div>
+        <div class="stat-info">
+            <h3 class="stat-number">{{ total_reports }}</h3>
+            <p class="stat-label">Reports Generated</p>
+        </div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-icon status-icon">
+            <i class="fas fa-shield-halved"></i>
+        </div>
+        <div class="stat-info">
+            <h3 class="stat-number status-active">Active</h3>
+            <p class="stat-label">System Status</p>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================ -->
+<!-- MAIN DASHBOARD GRID                           -->
+<!-- ============================================ -->
+<div class="dashboard-grid">
+
+    <!-- File Type Distribution Chart -->
+    <div class="card chart-card case-distribution">
+        <div class="card-header">
+            <h3><i class="fas fa-chart-pie"></i> File Type Distribution</h3>
+        </div>
+        <div class="card-body">
+            {% if file_types|length > 0 %}
+                <canvas id="fileTypeChart" height="200" style="max-height: 210px; width: 100%;"></canvas>
+            {% else %}
+                <div class="empty-state">
+                    <i class="fas fa-chart-pie"></i>
+                    <p>No evidence files analyzed yet.</p>
+                    <p class="empty-hint">Add evidence to a case to see the distribution here.</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Quick Access Tools -->
+    <div class="card quick-access-card case-distribution">
+        <div class="card-header">
+            <h3><i class="fas fa-toolbox"></i> Quick Access</h3>
+        </div>
+        <div class="card-body">
+            <div class="quick-tools-grid">
+                <a href="{{ url_for('cases') }}" class="quick-tool">
+                    <div class="quick-tool-icon icon-cases"><i class="fas fa-folder-plus"></i></div>
+                    <span>New Case</span>
+                </a>
+                <a href="{{ url_for('hash_analyzer') }}" class="quick-tool">
+                    <div class="quick-tool-icon icon-hash"><i class="fas fa-fingerprint"></i></div>
+                    <span>Hash Analyzer</span>
+                </a>
+                <a href="{{ url_for('file_analyzer') }}" class="quick-tool">
+                    <div class="quick-tool-icon icon-file"><i class="fas fa-file-magnifying-glass"></i></div>
+                    <span>File Analyzer</span>
+                </a>
+                <a href="{{ url_for('metadata') }}" class="quick-tool">
+                    <div class="quick-tool-icon icon-metadata"><i class="fas fa-tags"></i></div>
+                    <span>Metadata</span>
+                </a>
+                <a href="{{ url_for('keyword_search') }}" class="quick-tool">
+                    <div class="quick-tool-icon icon-keyword"><i class="fas fa-magnifying-glass"></i></div>
+                    <span>Keyword Search</span>
+                </a>
+                <a href="{{ url_for('timeline') }}" class="quick-tool">
+                    <div class="quick-tool-icon icon-timeline"><i class="fas fa-clock-rotate-left"></i></div>
+                    <span>Timeline</span>
+                </a>
+                <a href="{{ url_for('reports') }}" class="quick-tool">
+                    <div class="quick-tool-icon icon-reports"><i class="fas fa-file-pdf"></i></div>
+                    <span>Reports</span>
+                </a>
+                <a href="{{ url_for('settings') }}" class="quick-tool">
+                    <div class="quick-tool-icon icon-settings"><i class="fas fa-gear"></i></div>
+                    <span>Settings</span>
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Cases -->
+    <div class="card">
+        <div class="card-header">
+            <h3><i class="fas fa-clock"></i> Recent Cases</h3>
+        </div>
+        <div class="card-body">
+            {% if recent_cases|length > 0 %}
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Case ID</th>
+                            <th>Title</th>
+                            <th>Investigator</th>
+                            <th>Status</th>
+                            <th>Created</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for case in recent_cases %}
+                        <tr>
+                            <td><span class="badge badge-info">{{ case['case_id'] }}</span></td>
+                            <td>{{ case['title'] }}</td>
+                            <td>{{ case['investigator'] }}</td>
+                            <td>
+                                <span class="badge {% if case['status'] == 'Open' %}badge-success{% elif case['status'] == 'Closed' %}badge-secondary{% else %}badge-warning{% endif %}">
+                                    {{ case['status'] }}
+                                </span>
+                            </td>
+                            <td>{{ case['created_at'][:16] }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% else %}
+                <div class="empty-state">
+                    <i class="fas fa-folder-open"></i>
+                    <p>No cases created yet.</p>
+                    <p class="empty-hint">Go to <a href="{{ url_for('cases') }}">Cases</a> to start a new investigation.</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Recent Activity Log -->
+    <div class="card">
+        <div class="card-header">
+            <h3><i class="fas fa-list-check"></i> Recent Activity</h3>
+        </div>
+        <div class="card-body">
+            {% if recent_activity|length > 0 %}
+                <div class="activity-list">
+                    {% for log in recent_activity %}
+                    <div class="activity-item">
+                        <div class="activity-icon">
+                            <i class="fas fa-circle-dot"></i>
+                        </div>
+                        <div class="activity-details">
+                            <p class="activity-action">{{ log['action'] }}</p>
+                            <p class="activity-meta">
+                                {% if log['performed_by'] %}by {{ log['performed_by'] }} · {% endif %}
+                                {{ log['timestamp'][:16] }}
+                            </p>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="empty-state">
+                    <i class="fas fa-list-check"></i>
+                    <p>No recent activity.</p>
+                    <p class="empty-hint">Actions will appear here as you use the toolkit.</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+</div>
+
+<!-- Educational Disclaimer -->
+<div class="disclaimer-bar">
+    <i class="fas fa-info-circle"></i>
+    <span>This toolkit is designed for <strong>educational and authorized forensic investigations only</strong>. 
+    All findings require human verification and are not substitutes for certified forensic analysis.</span>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Only render chart if there's data
+    {% if file_types|length > 0 %}
+    const ctx = document.getElementById('fileTypeChart').getContext('2d');
+    new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: [{% for ft in file_types %}'{{ ft["file_type"] }}'{% if not loop.last %}, {% endif %}{% endfor %}],
+            datasets: [{
+                data: [{% for ft in file_types %}{{ ft["count"] }}{% if not loop.last %}, {% endif %}{% endfor %}],
+                backgroundColor: [
+                    '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
+                    '#ec4899', '#06b6d4', '#84cc16', '#f97316', '#6366f1'
+                ],
+                borderColor: '#1a1f2e',
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: { color: '#94a3b8', padding: 8, boxWidth: 12, font: { size: 11 } }
+                }
+            }
+        }
+    });
+    {% endif %}
+</script>
+{% endblock %}

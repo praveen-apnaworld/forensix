@@ -1,0 +1,25 @@
+# Python cache
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Virtual environments
+.venv/
+venv/
+forensix/.venv/
+forensix/venv/
+
+# Environment files
+.env
+.env.*
+
+# IDE
+.vscode/
+
+# Temporary files
+*.log
+.DS_Store
+
+# User uploads and generated reports
+forensix/uploads/*
+forensix/reports/*

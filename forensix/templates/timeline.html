@@ -1,0 +1,442 @@
+{% extends "base.html" %}
+
+{% block title %}Timeline Analyzer | ForensiX Toolkit{% endblock %}
+{% block page_title %}Forensic Timeline Analyzer{% endblock %}
+{% block breadcrumb %}/ <span>Timeline Analyzer</span>{% endblock %}
+
+{% block content %}
+<div class="timeline-container">
+
+    <!-- CONTROL PANEL & FILTERS CARD -->
+    <div class="card form-card" style="margin-bottom: 24px;">
+        <div class="card-header">
+            <h3><i class="fas fa-clock-rotate-left" style="color: #38bdf8;"></i> Timeline Event Filters & Evidence Scope</h3>
+        </div>
+        <div class="card-body">
+            {% if error %}
+            <div class="alert alert-error" style="margin-bottom: 20px;">
+                <i class="fas fa-circle-exclamation"></i>
+                <div>
+                    <strong>Timeline Notice:</strong> {{ error }}
+                </div>
+            </div>
+            {% endif %}
+
+            <form method="POST" action="{{ url_for('timeline') }}" enctype="multipart/form-data" id="timelineForm">
+                <!-- Row 1: Evidence Source Radios -->
+                <div class="form-group" style="margin-bottom: 20px;">
+                    <label style="display: block; font-weight: 600; margin-bottom: 10px; color: #e2e8f0;">
+                        <i class="fas fa-database text-cyan"></i> Evidence Source
+                    </label>
+                    <div style="display: flex; flex-wrap: wrap; gap: 20px;">
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                            <input type="radio" name="evidence_source" value="sample" id="src_sample" onchange="toggleTimelineSource()" {% if evidence_source == 'sample' %}checked{% endif %}>
+                            <span>Preloaded Sample Evidence Suite (<code>sample_evidence/</code>)</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                            <input type="radio" name="evidence_source" value="case" id="src_case" onchange="toggleTimelineSource()" {% if evidence_source == 'case' %}checked{% endif %}>
+                            <span>Investigation Case from Database</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                            <input type="radio" name="evidence_source" value="upload" id="src_upload" onchange="toggleTimelineSource()" {% if evidence_source == 'upload' %}checked{% endif %}>
+                            <span>Direct File Upload / ZIP Archive</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Conditional Upload Zone -->
+                <div id="timelineUploadSection" style="display: {% if evidence_source == 'upload' %}block{% else %}none{% endif %}; margin-bottom: 20px;">
+                    <div class="file-drop-zone" id="timelineDropZone" style="border: 2px dashed #475569; border-radius: 8px; padding: 20px; text-align: center; background: rgba(15, 23, 42, 0.4); cursor: pointer;">
+                        <i class="fas fa-cloud-arrow-up" style="font-size: 28px; color: #38bdf8; margin-bottom: 6px;"></i>
+                        <p style="font-size: 13.5px; margin-bottom: 4px;"><strong>Click or drop evidence files to analyze timeline</strong></p>
+                        <span class="file-hint">Extracts filesystem & document creation/mod timestamps</span>
+                        <input type="file" id="timelineFilesInput" name="files" multiple style="display: none;" onchange="handleTimelineFileSelect(this)">
+                        <div id="timelineFileFeedback" style="margin-top: 8px; font-weight: 600; color: #10b981; display: none;"></div>
+                    </div>
+                </div>
+
+                <!-- Conditional Case Selector -->
+                <div id="timelineCaseSection" style="display: {% if evidence_source == 'case' %}block{% else %}none{% endif %}; margin-bottom: 20px;">
+                    <label for="case_id" style="font-weight: 600; margin-bottom: 6px; display: block;">Select Investigation Case:</label>
+                    {% if cases and cases|length > 0 %}
+                    <select class="form-control" name="case_id" id="case_id" style="background: #0f172a; border-color: #334155; color: #f8fafc;">
+                        <option value="">-- All Registered Cases --</option>
+                        {% for c in cases %}
+                        <option value="{{ c['case_id'] }}" {% if selected_case_id == c['case_id'] %}selected{% endif %}>
+                            {{ c['case_id'] }} - {{ c['title'] }} ({{ c['investigator'] }})
+                        </option>
+                        {% endfor %}
+                    </select>
+                    {% else %}
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle"></i> No registered cases in database. You can scan the <strong>Preloaded Sample Evidence Suite</strong> to test MACB timestamps.
+                    </div>
+                    {% endif %}
+                </div>
+
+                <!-- Row 2: Filtering Grid -->
+                <div class="filter-controls-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 20px;">
+                    <!-- Date From -->
+                    <div>
+                        <label for="date_from" style="display: block; font-size: 12.5px; font-weight: 600; color: #94a3b8; margin-bottom: 6px;">
+                            <i class="fas fa-calendar-day text-cyan"></i> Date From:
+                        </label>
+                        <input type="date" class="form-control" id="date_from" name="date_from" value="{{ date_from }}" style="background: #0f172a; border-color: #334155; color: #f8fafc;">
+                    </div>
+
+                    <!-- Date To -->
+                    <div>
+                        <label for="date_to" style="display: block; font-size: 12.5px; font-weight: 600; color: #94a3b8; margin-bottom: 6px;">
+                            <i class="fas fa-calendar-day text-cyan"></i> Date To:
+                        </label>
+                        <input type="date" class="form-control" id="date_to" name="date_to" value="{{ date_to }}" style="background: #0f172a; border-color: #334155; color: #f8fafc;">
+                    </div>
+
+                    <!-- Filename Search Filter -->
+                    <div>
+                        <label for="filename_query" style="display: block; font-size: 12.5px; font-weight: 600; color: #94a3b8; margin-bottom: 6px;">
+                            <i class="fas fa-file-magnifying-glass text-cyan"></i> Filename Search:
+                        </label>
+                        <input type="text" class="form-control" id="filename_query" name="filename_query" value="{{ filename_query }}" placeholder="Filter by filename..." style="background: #0f172a; border-color: #334155; color: #f8fafc;">
+                    </div>
+
+                    <!-- Event Type Filter -->
+                    <div>
+                        <label for="event_type_filter" style="display: block; font-size: 12.5px; font-weight: 600; color: #94a3b8; margin-bottom: 6px;">
+                            <i class="fas fa-filter text-cyan"></i> Event Type:
+                        </label>
+                        <select class="form-control" id="event_type_filter" name="event_type_filter" style="background: #0f172a; border-color: #334155; color: #f8fafc;">
+                            <option value="ALL" {% if event_type_filter == 'ALL' or not event_type_filter %}selected{% endif %}>All Event Types</option>
+                            <option value="Created" {% if event_type_filter == 'Created' %}selected{% endif %}>Created (Birthtime / Embedded)</option>
+                            <option value="Modified" {% if event_type_filter == 'Modified' %}selected{% endif %}>Modified (mtime)</option>
+                            <option value="Metadata Changed" {% if event_type_filter == 'Metadata Changed' %}selected{% endif %}>Metadata Changed (ctime)</option>
+                            <option value="Accessed" {% if event_type_filter == 'Accessed' %}selected{% endif %}>Accessed (atime)</option>
+                            <option value="Registered" {% if event_type_filter == 'Registered' %}selected{% endif %}>Evidence Registered</option>
+                            <option value="Hash" {% if event_type_filter == 'Hash' %}selected{% endif %}>Hash Calculated</option>
+                            <option value="Metadata" {% if event_type_filter == 'Metadata' %}selected{% endif %}>Metadata Extracted</option>
+                            <option value="Keyword" {% if event_type_filter == 'Keyword' %}selected{% endif %}>Keyword Search Performed</option>
+                        </select>
+                    </div>
+
+                    <!-- Sort Order -->
+                    <div>
+                        <label for="sort_order" style="display: block; font-size: 12.5px; font-weight: 600; color: #94a3b8; margin-bottom: 6px;">
+                            <i class="fas fa-arrow-down-up-across-line text-cyan"></i> Chronological Sort:
+                        </label>
+                        <select class="form-control" id="sort_order" name="sort_order" style="background: #0f172a; border-color: #334155; color: #f8fafc;">
+                            <option value="desc" {% if sort_order == 'desc' %}selected{% endif %}>Newest to Oldest (Descending)</option>
+                            <option value="asc" {% if sort_order == 'asc' %}selected{% endif %}>Oldest to Newest (Ascending)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <button type="submit" class="btn btn-primary" id="timelineSubmitBtn">
+                        <i class="fas fa-clock-rotate-left"></i> Generate Timeline
+                    </button>
+                    <a href="{{ url_for('timeline') }}" class="btn btn-secondary">
+                        <i class="fas fa-arrow-rotate-left"></i> Reset Filters
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- FORENSIC ACCURACY DISCLAIMER -->
+    <div class="modal-banner banner-info" style="margin-bottom: 24px;">
+        <i class="fas fa-shield-halved"></i>
+        <div>
+            <strong>Forensic Timestamp Interpretation Notice</strong>
+            <p style="margin-top: 4px; font-size: 12px; line-height: 1.5; color: #cbd5e1;">
+                Filesystem timestamps (Modified, Metadata Changed, Accessed, Created) reflect OS storage attributes and do <strong>not</strong> conclusively prove human user presence. Modern Linux kernels use <code>relatime</code>/<code>noatime</code>, meaning access times may not update on every read. True file creation time (birthtime) availability depends on filesystem capabilities (e.g. ext4, NTFS, APFS). Inode status change (<code>ctime</code>) is <strong>never</strong> interpreted as file creation. Investigation milestones are software audit logs and are strictly distinguished from evidence timestamps.
+            </p>
+        </div>
+    </div>
+
+    <!-- TIMELINE DASHBOARD SUMMARY CARDS -->
+    {% if timeline %}
+    <div class="timeline-stats-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 16px; margin-bottom: 24px;">
+        <!-- Card 1: Total Events -->
+        <div class="metric-card" style="background: #1e293b; border-radius: 8px; padding: 16px; border: 1px solid #334155; display: flex; align-items: center; gap: 14px;">
+            <div style="width: 44px; height: 44px; border-radius: 8px; background: rgba(56, 189, 248, 0.15); display: flex; align-items: center; justify-content: center; font-size: 20px; color: #38bdf8;">
+                <i class="fas fa-clock"></i>
+            </div>
+            <div>
+                <div style="font-size: 11px; text-transform: uppercase; color: #94a3b8; font-weight: 600;">Total Events</div>
+                <div style="font-size: 22px; font-weight: 700; color: #f8fafc;">{{ timeline.total_events }}</div>
+            </div>
+        </div>
+
+        <!-- Card 2: Files Analyzed -->
+        <div class="metric-card" style="background: #1e293b; border-radius: 8px; padding: 16px; border: 1px solid #334155; display: flex; align-items: center; gap: 14px;">
+            <div style="width: 44px; height: 44px; border-radius: 8px; background: rgba(148, 163, 184, 0.15); display: flex; align-items: center; justify-content: center; font-size: 20px; color: #94a3b8;">
+                <i class="fas fa-file-shield"></i>
+            </div>
+            <div>
+                <div style="font-size: 11px; text-transform: uppercase; color: #94a3b8; font-weight: 600;">Files Analyzed</div>
+                <div style="font-size: 22px; font-weight: 700; color: #f8fafc;">{{ timeline.total_files }}</div>
+            </div>
+        </div>
+
+        <!-- Card 3: Created Events -->
+        <div class="metric-card" style="background: #1e293b; border-radius: 8px; padding: 16px; border: 1px solid #334155; display: flex; align-items: center; gap: 14px;">
+            <div style="width: 44px; height: 44px; border-radius: 8px; background: rgba(16, 185, 129, 0.15); display: flex; align-items: center; justify-content: center; font-size: 20px; color: #10b981;">
+                <i class="fas fa-file-circle-plus"></i>
+            </div>
+            <div>
+                <div style="font-size: 11px; text-transform: uppercase; color: #94a3b8; font-weight: 600;">Created Events</div>
+                <div style="font-size: 22px; font-weight: 700; color: #10b981;">{{ timeline.created_events }}</div>
+            </div>
+        </div>
+
+        <!-- Card 4: Modified Events -->
+        <div class="metric-card" style="background: #1e293b; border-radius: 8px; padding: 16px; border: 1px solid #334155; display: flex; align-items: center; gap: 14px;">
+            <div style="width: 44px; height: 44px; border-radius: 8px; background: rgba(245, 158, 11, 0.15); display: flex; align-items: center; justify-content: center; font-size: 20px; color: #f59e0b;">
+                <i class="fas fa-pen-to-square"></i>
+            </div>
+            <div>
+                <div style="font-size: 11px; text-transform: uppercase; color: #94a3b8; font-weight: 600;">Modified Events</div>
+                <div style="font-size: 22px; font-weight: 700; color: #f59e0b;">{{ timeline.modified_events }}</div>
+            </div>
+        </div>
+
+        <!-- Card 5: Metadata Changed Events (ctime) -->
+        <div class="metric-card" style="background: #1e293b; border-radius: 8px; padding: 16px; border: 1px solid #334155; display: flex; align-items: center; gap: 14px;">
+            <div style="width: 44px; height: 44px; border-radius: 8px; background: rgba(148, 163, 184, 0.15); display: flex; align-items: center; justify-content: center; font-size: 20px; color: #94a3b8;">
+                <i class="fas fa-arrows-rotate"></i>
+            </div>
+            <div>
+                <div style="font-size: 11px; text-transform: uppercase; color: #94a3b8; font-weight: 600;">Metadata Changed</div>
+                <div style="font-size: 22px; font-weight: 700; color: #cbd5e1;">{{ timeline.metadata_changed_events }}</div>
+            </div>
+        </div>
+
+        <!-- Card 6: Accessed Events -->
+        <div class="metric-card" style="background: #1e293b; border-radius: 8px; padding: 16px; border: 1px solid #334155; display: flex; align-items: center; gap: 14px;">
+            <div style="width: 44px; height: 44px; border-radius: 8px; background: rgba(56, 189, 248, 0.15); display: flex; align-items: center; justify-content: center; font-size: 20px; color: #38bdf8;">
+                <i class="fas fa-eye"></i>
+            </div>
+            <div>
+                <div style="font-size: 11px; text-transform: uppercase; color: #94a3b8; font-weight: 600;">Accessed Events</div>
+                <div style="font-size: 22px; font-weight: 700; color: #38bdf8;">{{ timeline.accessed_events }}</div>
+            </div>
+        </div>
+
+        <!-- Card 7: Investigation Milestones -->
+        <div class="metric-card" style="background: #1e293b; border-radius: 8px; padding: 16px; border: 1px solid #334155; display: flex; align-items: center; gap: 14px;">
+            <div style="width: 44px; height: 44px; border-radius: 8px; background: rgba(168, 85, 247, 0.15); display: flex; align-items: center; justify-content: center; font-size: 20px; color: #a855f7;">
+                <i class="fas fa-microscope"></i>
+            </div>
+            <div>
+                <div style="font-size: 11px; text-transform: uppercase; color: #94a3b8; font-weight: 600;">App Milestones</div>
+                <div style="font-size: 22px; font-weight: 700; color: #a855f7;">{{ timeline.investigation_events }}</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TIMELINE VISUALIZATION & EXPORT BAR -->
+    <div class="card" style="margin-bottom: 24px;">
+        <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+            <div>
+                <h3 style="margin-bottom: 4px;">
+                    <i class="fas fa-timeline text-cyan"></i> Chronological Evidence Sequence 
+                    <span style="font-size: 13px; font-weight: normal; color: #94a3b8;">
+                        ({% if timeline.sort_order == 'asc' %}Oldest to Newest{% else %}Newest to Oldest{% endif %})
+                    </span>
+                </h3>
+                {% if timeline.date_earliest and timeline.date_latest %}
+                <span class="file-hint">
+                    <i class="fas fa-calendar-range"></i> Span: {{ timeline.date_earliest }} &rarr; {{ timeline.date_latest }}
+                </span>
+                {% endif %}
+            </div>
+            
+            <!-- Export Actions -->
+            <div style="display: flex; gap: 10px;">
+                <form method="POST" action="{{ url_for('timeline_export_json') }}" style="display: inline;">
+                    <input type="hidden" name="export_data" value="{{ export_json_payload }}">
+                    <button type="submit" class="btn btn-secondary btn-sm" title="Download timeline as structured JSON">
+                        <i class="fas fa-download"></i> Export JSON
+                    </button>
+                </form>
+                <form method="POST" action="{{ url_for('timeline_export_csv') }}" style="display: inline;">
+                    <input type="hidden" name="export_data" value="{{ export_json_payload }}">
+                    <button type="submit" class="btn btn-secondary btn-sm" title="Download timeline as spreadsheet CSV">
+                        <i class="fas fa-file-csv"></i> Export CSV
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <div class="card-body">
+            {% if timeline.events and timeline.events|length > 0 %}
+            <div class="timeline-v-wrapper">
+                <div class="timeline-v-track"></div>
+
+                {% for ev in timeline.events %}
+                <div class="timeline-v-item" onclick="openTimelineEventModal({{ loop.index0 }})" style="cursor: pointer;">
+                    <!-- Event Node Icon -->
+                    <div class="timeline-v-node node-{{ ev.event_type|lower|replace(' ', '-') }}">
+                        <i class="fas {{ ev.icon }}"></i>
+                    </div>
+
+                    <!-- Event Content Card -->
+                    <div class="timeline-v-card">
+                        <div class="timeline-v-header">
+                            <span class="timeline-v-timestamp">
+                                <i class="fas fa-clock"></i> {{ ev.timestamp }}
+                            </span>
+                            <span class="badge {{ ev.badge_class }}">{{ ev.event_type }}</span>
+                        </div>
+                        
+                        <div class="timeline-v-body">
+                            <div class="timeline-v-filename">
+                                <i class="fas fa-file-lines text-cyan" style="margin-right: 4px;"></i>
+                                <strong>{{ ev.filename }}</strong>
+                            </div>
+                            
+                            <div class="timeline-v-meta" style="font-size: 12px; color: #94a3b8; margin-top: 6px; display: flex; flex-wrap: wrap; gap: 14px;">
+                                <span><i class="fas fa-box-archive"></i> Evd: <code>{{ ev.evidence_id }}</code></span>
+                                <span><i class="fas fa-folder-open"></i> Case: <code>{{ ev.case_id }}</code></span>
+                                <span><i class="fas fa-satellite-dish"></i> Source: {{ ev.event_source }}</span>
+                                {% if ev.creation_time_display %}
+                                <span style="color: {% if ev.creation_time_display == 'Creation Time Not Available' %}#f87171{% else %}#10b981{% endif %}; font-weight: 500;">
+                                    <i class="fas fa-calendar-plus"></i> Creation Time: <strong>{{ ev.creation_time_display }}</strong>
+                                </span>
+                                {% endif %}
+                            </div>
+
+                            <p style="font-size: 12px; color: #cbd5e1; margin-top: 8px; line-height: 1.4; border-left: 2px solid #334155; padding-left: 8px;">
+                                {{ ev.forensic_notes }}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="empty-state" style="padding: 40px; text-align: center;">
+                <i class="fas fa-clock-rotate-left" style="font-size: 40px; color: #64748b; margin-bottom: 12px;"></i>
+                <h4 style="color: #cbd5e1; margin-bottom: 6px;">No Timeline Events Located</h4>
+                <p style="color: #94a3b8; font-size: 13.5px; max-width: 500px; margin: 0 auto;">
+                    No filesystem timestamps or investigation milestones matched your filter criteria. Try adjusting the date range or selecting another evidence scope.
+                </p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- EVENT DETAILS MODAL -->
+    <div class="modal-overlay" id="timelineDetailModal" style="display: none;">
+        <div class="modal" style="max-width: 700px; width: 90%;">
+            <div class="modal-header">
+                <h3 id="modalEventTitle"><i class="fas fa-clock text-cyan"></i> Event Forensic Telemetry</h3>
+                <button type="button" class="modal-close" onclick="closeTimelineEventModal()">
+                    <i class="fas fa-xmark"></i>
+                </button>
+            </div>
+            <div class="modal-body" id="modalEventBody"></div>
+        </div>
+    </div>
+
+    <script id="timelineEventsJson" type="application/json">
+        {{ timeline.events|tojson|safe }}
+    </script>
+    {% endif %}
+
+</div>
+
+<script>
+function toggleTimelineSource() {
+    var srcUpload = document.getElementById('src_upload').checked;
+    var srcCase = document.getElementById('src_case').checked;
+    document.getElementById('timelineUploadSection').style.display = srcUpload ? 'block' : 'none';
+    document.getElementById('timelineCaseSection').style.display = srcCase ? 'block' : 'none';
+}
+
+var dropZone = document.getElementById('timelineDropZone');
+var fileInput = document.getElementById('timelineFilesInput');
+
+if (dropZone && fileInput) {
+    dropZone.addEventListener('click', function() {
+        fileInput.click();
+    });
+
+    dropZone.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        dropZone.style.borderColor = '#38bdf8';
+        dropZone.style.background = 'rgba(56, 189, 248, 0.1)';
+    });
+
+    dropZone.addEventListener('dragleave', function(e) {
+        e.preventDefault();
+        dropZone.style.borderColor = '#475569';
+        dropZone.style.background = 'rgba(15, 23, 42, 0.4)';
+    });
+
+    dropZone.addEventListener('drop', function(e) {
+        e.preventDefault();
+        dropZone.style.borderColor = '#475569';
+        dropZone.style.background = 'rgba(15, 23, 42, 0.4)';
+        if (e.dataTransfer.files.length > 0) {
+            fileInput.files = e.dataTransfer.files;
+            handleTimelineFileSelect(fileInput);
+        }
+    });
+}
+
+function handleTimelineFileSelect(input) {
+    var feedback = document.getElementById('timelineFileFeedback');
+    if (input.files && input.files.length > 0) {
+        feedback.style.display = 'block';
+        feedback.innerHTML = '<i class="fas fa-check-circle"></i> ' + input.files.length + ' file(s) selected for timeline reconstruction';
+    } else {
+        feedback.style.display = 'none';
+    }
+}
+
+var timelineEventsData = [];
+var scriptTag = document.getElementById('timelineEventsJson');
+if (scriptTag) {
+    try {
+        timelineEventsData = JSON.parse(scriptTag.textContent);
+    } catch(e) {
+        console.error('Failed to parse timeline JSON', e);
+    }
+}
+
+function openTimelineEventModal(index) {
+    var ev = timelineEventsData[index];
+    if (!ev) return;
+
+    document.getElementById('modalEventTitle').innerHTML = '<i class="fas ' + ev.icon + ' text-cyan"></i> ' + ev.event_type + ' - ' + ev.filename;
+
+    var html = '<table class="data-table" style="width: 100%; border-collapse: collapse;">';
+    html += '<tbody>';
+    
+    html += '<tr style="border-bottom: 1px solid #334155;"><td style="width: 35%; padding: 10px; font-weight: 600; color: #94a3b8;">Event Type</td><td style="padding: 10px;"><span class="badge ' + ev.badge_class + '">' + ev.event_type + '</span></td></tr>';
+    html += '<tr style="border-bottom: 1px solid #334155;"><td style="padding: 10px; font-weight: 600; color: #94a3b8;">Formatted Timestamp</td><td style="padding: 10px; font-family: monospace; font-weight: 600; color: #38bdf8;">' + ev.timestamp + '</td></tr>';
+    html += '<tr style="border-bottom: 1px solid #334155;"><td style="padding: 10px; font-weight: 600; color: #94a3b8;">Timestamp Precision</td><td style="padding: 10px; font-family: monospace;">' + (ev.precision || 'Standard Second') + '</td></tr>';
+    html += '<tr style="border-bottom: 1px solid #334155;"><td style="padding: 10px; font-weight: 600; color: #94a3b8;">Timezone Telemetry</td><td style="padding: 10px; font-family: monospace;">' + (ev.timezone_info || 'Local') + '</td></tr>';
+    html += '<tr style="border-bottom: 1px solid #334155;"><td style="padding: 10px; font-weight: 600; color: #94a3b8;">Filename / Subject</td><td style="padding: 10px; font-family: monospace;">' + ev.filename + '</td></tr>';
+    html += '<tr style="border-bottom: 1px solid #334155;"><td style="padding: 10px; font-weight: 600; color: #94a3b8;">Evidence Reference</td><td style="padding: 10px;"><code>' + ev.evidence_id + '</code></td></tr>';
+    html += '<tr style="border-bottom: 1px solid #334155;"><td style="padding: 10px; font-weight: 600; color: #94a3b8;">Case Reference</td><td style="padding: 10px;"><code>' + ev.case_id + '</code></td></tr>';
+    html += '<tr style="border-bottom: 1px solid #334155;"><td style="padding: 10px; font-weight: 600; color: #94a3b8;">Event Source</td><td style="padding: 10px; color: #cbd5e1;">' + ev.event_source + '</td></tr>';
+    if (ev.creation_time_display) {
+        var crColor = ev.creation_time_display === 'Creation Time Not Available' ? '#f87171' : '#10b981';
+        html += '<tr style="border-bottom: 1px solid #334155;"><td style="padding: 10px; font-weight: 600; color: #94a3b8;">Creation Time Status</td><td style="padding: 10px; font-family: monospace; font-weight: 600; color: ' + crColor + ';">' + ev.creation_time_display + '</td></tr>';
+    }
+    html += '<tr><td style="padding: 10px; font-weight: 600; color: #94a3b8;">Forensic Analysis Note</td><td style="padding: 10px; color: #e2e8f0; line-height: 1.5;">' + ev.forensic_notes + '</td></tr>';
+    
+    html += '</tbody></table>';
+
+    document.getElementById('modalEventBody').innerHTML = html;
+    document.getElementById('timelineDetailModal').style.display = 'flex';
+}
+
+function closeTimelineEventModal() {
+    document.getElementById('timelineDetailModal').style.display = 'none';
+}
+</script>
+{% endblock %}

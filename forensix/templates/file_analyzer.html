@@ -1,0 +1,647 @@
+{% extends "base.html" %}
+
+{% block title %}File Analyzer{% endblock %}
+{% block page_title %}File Analyzer{% endblock %}
+{% block breadcrumb %}/ <span>File Analyzer</span>{% endblock %}
+
+{% block content %}
+
+<!-- Error Notification -->
+{% if error %}
+<div class="flash-msg flash-error" style="margin-bottom: 20px;">
+    <i class="fas fa-exclamation-circle"></i>
+    <span>{{ error }}</span>
+    <button class="flash-close" onclick="this.parentElement.remove()">
+        <i class="fas fa-xmark"></i>
+    </button>
+</div>
+{% endif %}
+
+<div class="analyzer-layout">
+
+    <!-- ============================================ -->
+    <!-- UPLOAD EVIDENCE SECTION                      -->
+    <!-- ============================================ -->
+    <div class="card">
+        <div class="card-header">
+            <h3><i class="fas fa-file-magnifying-glass"></i> Evidence File Inspection</h3>
+            <span class="badge badge-info">Multi-File Supported</span>
+        </div>
+        <div class="card-body">
+            <p class="section-desc">
+                Upload one or multiple evidence files to verify true file formats via magic bytes,
+                detect extension mismatches (masquerading), discover hidden files, and inspect filesystem timestamps.
+                Files are analyzed passively in memory and are <strong>never executed</strong>.
+            </p>
+
+            <form method="POST" enctype="multipart/form-data" id="analyzerUploadForm">
+                <input type="hidden" name="client_timestamps" id="clientTimestampsInput" value="{}">
+
+                <div class="form-group">
+                    <label class="form-label" for="analyzerFileInput">
+                        <i class="fas fa-folder-open"></i> Select Evidence Files
+                    </label>
+                    <div class="file-upload-area" id="analyzerDropZone">
+                        <input type="file" name="files" id="analyzerFileInput" class="file-input" multiple required>
+                        <div class="file-upload-content" id="uploadPrompt">
+                            <i class="fas fa-cloud-arrow-up"></i>
+                            <p class="file-upload-text">Drag & drop evidence files here, or click to browse</p>
+                            <p class="file-upload-hint">Supports multiple files · Safe memory analysis · Max 50 MB per request</p>
+                        </div>
+                        <div class="file-selected-multi" id="filesSelectedList" style="display: none;">
+                            <div class="selection-summary">
+                                <i class="fas fa-folder-open"></i>
+                                <span id="selectionSummaryText">0 files selected</span>
+                                <button type="button" class="btn btn-sm btn-secondary" id="clearSelectionBtn">Change</button>
+                            </div>
+                            <ul class="selected-files-preview" id="selectedFilesPreviewUl"></ul>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-actions-row">
+                    <button type="submit" class="btn btn-primary" id="analyzeBtn">
+                        <i class="fas fa-magnifying-glass"></i> Analyze Evidence Files
+                    </button>
+                    {% if results %}
+                    <a href="{{ url_for('file_analyzer') }}" class="btn btn-secondary">
+                        <i class="fas fa-arrow-rotate-left"></i> Reset Form
+                    </a>
+                    {% endif %}
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ============================================ -->
+    <!-- ANALYSIS DASHBOARD & METRICS                 -->
+    <!-- ============================================ -->
+    {% if results and summary %}
+    <div class="analyzer-summary-section" id="analysisSection">
+
+        <!-- Stat Cards Grid -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon cases-icon">
+                    <i class="fas fa-files"></i>
+                </div>
+                <div class="stat-info">
+                    <h3 class="stat-number">{{ summary.total_files }}</h3>
+                    <p class="stat-label">Files Analyzed</p>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon evidence-icon">
+                    <i class="fas fa-hard-drive"></i>
+                </div>
+                <div class="stat-info">
+                    <h3 class="stat-number">{{ summary.total_size_human }}</h3>
+                    <p class="stat-label">Total Size</p>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon {% if summary.mismatch_count > 0 %}mismatch-icon{% else %}reports-icon{% endif %}">
+                    <i class="fas fa-triangle-exclamation"></i>
+                </div>
+                <div class="stat-info">
+                    <h3 class="stat-number {% if summary.mismatch_count > 0 %}stat-alert{% endif %}">
+                        {{ summary.mismatch_count }}
+                    </h3>
+                    <p class="stat-label">Extension Mismatches</p>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon status-icon">
+                    <i class="fas fa-eye-slash"></i>
+                </div>
+                <div class="stat-info">
+                    <h3 class="stat-number {% if summary.hidden_count > 0 %}stat-info-text{% endif %}">
+                        {{ summary.hidden_count }}
+                    </h3>
+                    <p class="stat-label">Hidden Files</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- File Type Distribution Badges -->
+        <div class="card category-distribution-card">
+            <div class="card-header">
+                <h3><i class="fas fa-chart-pie"></i> File Type Distribution</h3>
+            </div>
+            <div class="card-body">
+                <div class="distribution-pills">
+                    {% for cat, count in summary.category_counts.items() %}
+                    <button type="button" class="dist-pill {% if count > 0 %}has-files{% endif %}" onclick="filterByCategory('{{ cat }}')">
+                        <span class="pill-name">{{ cat }}</span>
+                        <span class="pill-count">{{ count }}</span>
+                    </button>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <!-- ============================================ -->
+        <!-- RESULTS TABLE & SEARCH                       -->
+        <!-- ============================================ -->
+        <div class="card">
+            <div class="card-header results-header">
+                <h3><i class="fas fa-list-check"></i> Evidence Analysis Results ({{ results|length }})</h3>
+                <div class="table-tools">
+                    <div class="search-box">
+                        <i class="fas fa-search"></i>
+                        <input type="text" id="tableSearchInput" placeholder="Search filename, extension, format..." onkeyup="filterTable()">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Filter Tabs -->
+            <div class="table-filters-bar">
+                <button type="button" class="filter-tab active" data-filter="all" onclick="applyTabFilter('all')">
+                    All Files ({{ results|length }})
+                </button>
+                <button type="button" class="filter-tab" data-filter="mismatch" onclick="applyTabFilter('mismatch')">
+                    <i class="fas fa-triangle-exclamation"></i> Mismatches ({{ summary.mismatch_count }})
+                </button>
+                <button type="button" class="filter-tab" data-filter="hidden" onclick="applyTabFilter('hidden')">
+                    <i class="fas fa-eye-slash"></i> Hidden ({{ summary.hidden_count }})
+                </button>
+                <button type="button" class="filter-tab" data-filter="Images" onclick="applyTabFilter('Images')">Images</button>
+                <button type="button" class="filter-tab" data-filter="Documents" onclick="applyTabFilter('Documents')">Documents</button>
+                <button type="button" class="filter-tab" data-filter="Text files" onclick="applyTabFilter('Text files')">Text</button>
+                <button type="button" class="filter-tab" data-filter="Executables" onclick="applyTabFilter('Executables')">Executables</button>
+            </div>
+
+            <div class="card-body" style="padding: 0;">
+                <div class="table-responsive">
+                    <table class="data-table" id="analysisTable">
+                        <thead>
+                            <tr>
+                                <th>Filename</th>
+                                <th>Extension</th>
+                                <th>Actual Category</th>
+                                <th>Detected Format</th>
+                                <th>File Size</th>
+                                <th>Hidden</th>
+                                <th>Status</th>
+                                <th style="text-align: right;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in results %}
+                            <tr class="file-row" 
+                                data-category="{{ item.category }}" 
+                                data-mismatch="{{ 'true' if item.is_mismatch else 'false' }}" 
+                                data-hidden="{{ 'true' if item.is_hidden else 'false' }}"
+                                data-search="{{ item.filename|lower }} {{ item.extension|lower }} {{ item.detected_format|lower }} {{ item.category|lower }}">
+                                
+                                <!-- Filename with type icon -->
+                                <td>
+                                    <div class="table-filename">
+                                        {% if item.category == 'Images' %}
+                                            <i class="fas fa-file-image type-icon-image"></i>
+                                        {% elif item.category == 'Documents' %}
+                                            <i class="fas fa-file-lines type-icon-doc"></i>
+                                        {% elif item.category == 'Videos' %}
+                                            <i class="fas fa-file-video type-icon-video"></i>
+                                        {% elif item.category == 'Audio' %}
+                                            <i class="fas fa-file-audio type-icon-audio"></i>
+                                        {% elif item.category == 'Archives' %}
+                                            <i class="fas fa-file-zipper type-icon-archive"></i>
+                                        {% elif item.category == 'Executables' %}
+                                            <i class="fas fa-file-code type-icon-exec"></i>
+                                        {% elif item.category == 'Text files' %}
+                                            <i class="fas fa-file-code type-icon-text"></i>
+                                        {% else %}
+                                            <i class="fas fa-file type-icon-unknown"></i>
+                                        {% endif %}
+                                        <span class="file-name-text" title="{{ item.filename }}">{{ item.filename }}</span>
+                                    </div>
+                                </td>
+
+                                <!-- Extension -->
+                                <td>
+                                    <code class="ext-badge">.{{ item.extension }}</code>
+                                </td>
+
+                                <!-- Actual Category -->
+                                <td>
+                                    <span class="badge badge-category badge-cat-{{ item.category|lower|replace(' ', '-') }}">
+                                        {{ item.category }}
+                                    </span>
+                                </td>
+
+                                <!-- Detected Format -->
+                                <td class="format-cell">
+                                    <span class="detected-format-text" title="{{ item.detected_format }}">{{ item.detected_format }}</span>
+                                    <span class="mime-subtext">{{ item.mime_type }}</span>
+                                </td>
+
+                                <!-- File Size -->
+                                <td>
+                                    <span class="size-text">{{ item.file_size_human }}</span>
+                                </td>
+
+                                <!-- Hidden Status -->
+                                <td>
+                                    {% if item.is_hidden %}
+                                        <span class="badge badge-warning"><i class="fas fa-eye-slash"></i> Hidden</span>
+                                    {% else %}
+                                        <span class="badge badge-secondary">Visible</span>
+                                    {% endif %}
+                                </td>
+
+                                <!-- Analysis Status -->
+                                <td>
+                                    {% if item.is_mismatch %}
+                                        <span class="badge badge-error" title="Signature disagrees with extension">
+                                            <i class="fas fa-triangle-exclamation"></i> Mismatch Warning
+                                        </span>
+                                    {% else %}
+                                        <span class="badge badge-success">
+                                            <i class="fas fa-check"></i> Normal
+                                        </span>
+                                    {% endif %}
+                                </td>
+
+                                <!-- Action -->
+                                <td style="text-align: right;">
+                                    <button type="button" class="btn btn-sm btn-primary" onclick="openDetailsModal({{ loop.index0 }})">
+                                        <i class="fas fa-circle-info"></i> View Details
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Empty filter state -->
+                <div class="empty-state" id="tableFilterEmpty" style="display: none; padding: 40px 20px;">
+                    <i class="fas fa-filter-circle-xmark"></i>
+                    <p>No evidence files match your search or filter criteria.</p>
+                </div>
+            </div>
+        </div>
+
+    </div>
+    {% endif %}
+
+</div>
+
+<!-- ============================================ -->
+<!-- FORENSIC FILE DETAILS MODAL                  -->
+<!-- ============================================ -->
+<div class="modal-overlay" id="fileDetailsModal">
+    <div class="modal modal-lg">
+        <div class="modal-header">
+            <h3><i class="fas fa-microscope" style="color: #3b82f6;"></i> Forensic File Examination</h3>
+            <button class="modal-close" onclick="closeDetailsModal()">
+                <i class="fas fa-xmark"></i>
+            </button>
+        </div>
+        <div class="modal-body" id="modalDetailsBody">
+            <!-- Dynamically populated via JavaScript -->
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeDetailsModal()">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================ -->
+<!-- FORENSIC DISCLAIMER BAR                     -->
+<!-- ============================================ -->
+<div class="info-box" style="margin-top: 24px;">
+    <i class="fas fa-info-circle"></i>
+    <span>
+        <strong>Forensic Methodology Notice:</strong> The File Analyzer verifies file headers against
+        known binary signatures (magic numbers). An extension mismatch indicates file masquerading or renaming.
+        In forensic science, anomalies require corroborating investigation and are <strong>never automatically labeled malware</strong>.
+    </span>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+/**
+ * ForensiX File Analyzer - Interactive Scripts
+ */
+
+// Serialized results passed safely from Flask for the details modal
+const analyzedFilesData = {{ results|tojson|safe if results else '[]' }};
+
+// --- MULTI-FILE SELECTION & TIMESTAMPS ---
+document.addEventListener('DOMContentLoaded', function() {
+    const fileInput = document.getElementById('analyzerFileInput');
+    const uploadPrompt = document.getElementById('uploadPrompt');
+    const filesSelectedList = document.getElementById('filesSelectedList');
+    const selectionSummaryText = document.getElementById('selectionSummaryText');
+    const selectedFilesPreviewUl = document.getElementById('selectedFilesPreviewUl');
+    const clearSelectionBtn = document.getElementById('clearSelectionBtn');
+    const clientTimestampsInput = document.getElementById('clientTimestampsInput');
+    const dropZone = document.getElementById('analyzerDropZone');
+
+    if (fileInput) {
+        fileInput.addEventListener('change', function() {
+            handleFileSelection(this.files);
+        });
+
+        // Drag & drop handlers
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, function(e) {
+                e.preventDefault();
+                dropZone.classList.add('dragover');
+            });
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, function(e) {
+                e.preventDefault();
+                dropZone.classList.remove('dragover');
+            });
+        });
+
+        dropZone.addEventListener('drop', function(e) {
+            e.preventDefault();
+            if (e.dataTransfer && e.dataTransfer.files.length > 0) {
+                fileInput.files = e.dataTransfer.files;
+                handleFileSelection(e.dataTransfer.files);
+            }
+        });
+
+        if (clearSelectionBtn) {
+            clearSelectionBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                fileInput.value = '';
+                uploadPrompt.style.display = 'flex';
+                filesSelectedList.style.display = 'none';
+                clientTimestampsInput.value = '{}';
+            });
+        }
+    }
+
+    function handleFileSelection(files) {
+        if (!files || files.length === 0) {
+            uploadPrompt.style.display = 'flex';
+            filesSelectedList.style.display = 'none';
+            return;
+        }
+
+        uploadPrompt.style.display = 'none';
+        filesSelectedList.style.display = 'block';
+        selectionSummaryText.textContent = `${files.length} file${files.length > 1 ? 's' : ''} queued for inspection`;
+
+        // Capture client modification timestamps
+        const timestampsMap = {};
+        selectedFilesPreviewUl.innerHTML = '';
+
+        for (let i = 0; i < files.length; i++) {
+            const f = files[i];
+            timestampsMap[f.name] = f.lastModified;
+
+            // Preview first 6 files in list
+            if (i < 6) {
+                const li = document.createElement('li');
+                li.innerHTML = `<i class="fas fa-file-lines"></i> <strong>${escapeHtml(f.name)}</strong> <span class="size-hint">(${formatBytes(f.size)})</span>`;
+                selectedFilesPreviewUl.appendChild(li);
+            }
+        }
+
+        if (files.length > 6) {
+            const moreLi = document.createElement('li');
+            moreLi.className = 'more-files-hint';
+            moreLi.textContent = `...and ${files.length - 6} more evidence files`;
+            selectedFilesPreviewUl.appendChild(moreLi);
+        }
+
+        clientTimestampsInput.value = JSON.stringify(timestampsMap);
+    }
+
+    // Scroll to results if present
+    const analysisSection = document.getElementById('analysisSection');
+    if (analysisSection) {
+        analysisSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+});
+
+// --- SEARCH & FILTER LOGIC ---
+let activeTabFilter = 'all';
+
+function applyTabFilter(filterKey) {
+    activeTabFilter = filterKey;
+
+    // Update tab UI
+    document.querySelectorAll('.filter-tab').forEach(tab => {
+        if (tab.getAttribute('data-filter') === filterKey) {
+            tab.classList.add('active');
+        } else {
+            tab.classList.remove('active');
+        }
+    });
+
+    filterTable();
+}
+
+function filterByCategory(categoryName) {
+    applyTabFilter(categoryName);
+}
+
+function filterTable() {
+    const searchVal = (document.getElementById('tableSearchInput')?.value || '').toLowerCase().trim();
+    const rows = document.querySelectorAll('#analysisTable tbody tr.file-row');
+    const emptyState = document.getElementById('tableFilterEmpty');
+    let visibleCount = 0;
+
+    rows.forEach(row => {
+        const cat = row.getAttribute('data-category');
+        const mismatch = row.getAttribute('data-mismatch') === 'true';
+        const hidden = row.getAttribute('data-hidden') === 'true';
+        const searchContent = row.getAttribute('data-search') || '';
+
+        let tabMatch = true;
+        if (activeTabFilter === 'mismatch') {
+            tabMatch = mismatch;
+        } else if (activeTabFilter === 'hidden') {
+            tabMatch = hidden;
+        } else if (activeTabFilter !== 'all') {
+            tabMatch = (cat === activeTabFilter);
+        }
+
+        const textMatch = !searchVal || searchContent.includes(searchVal);
+
+        if (tabMatch && textMatch) {
+            row.style.display = '';
+            visibleCount++;
+        } else {
+            row.style.display = 'none';
+        }
+    });
+
+    if (emptyState) {
+        emptyState.style.display = (visibleCount === 0) ? 'block' : 'none';
+    }
+}
+
+// --- DETAILS MODAL ---
+function openDetailsModal(index) {
+    const file = analyzedFilesData[index];
+    if (!file) return;
+
+    const modalBody = document.getElementById('modalDetailsBody');
+    const modal = document.getElementById('fileDetailsModal');
+
+    const mismatchBadge = file.is_mismatch
+        ? `<div class="modal-banner banner-nomatch">
+             <i class="fas fa-triangle-exclamation"></i>
+             <div>
+               <strong>Extension Mismatch Detected</strong>
+               <p>${escapeHtml(file.mismatch_warning || '')}</p>
+             </div>
+           </div>`
+        : `<div class="modal-banner banner-match">
+             <i class="fas fa-circle-check"></i>
+             <div>
+               <strong>Consistent File Signature</strong>
+               <p>The internal binary signature matches the expected format for this file extension.</p>
+             </div>
+           </div>`;
+
+    const hiddenNotice = file.is_hidden
+        ? `<div class="modal-banner banner-warning">
+             <i class="fas fa-eye-slash"></i>
+             <div>
+               <strong>Hidden File Flagged</strong>
+               <p>The filename begins with a period ('.'), indicating a hidden file under POSIX / Unix operating systems.</p>
+             </div>
+           </div>`
+        : '';
+
+    modalBody.innerHTML = `
+        ${mismatchBadge}
+        ${hiddenNotice}
+
+        <!-- Key Properties Table -->
+        <div class="modal-section-title">
+            <i class="fas fa-circle-info"></i> File Identification
+        </div>
+        <div class="modal-info-grid">
+            <div class="info-cell">
+                <span class="cell-label">Filename</span>
+                <span class="cell-value cell-code">${escapeHtml(file.filename)}</span>
+            </div>
+            <div class="info-cell">
+                <span class="cell-label">Extension</span>
+                <span class="cell-value cell-code">.${escapeHtml(file.extension)}</span>
+            </div>
+            <div class="info-cell">
+                <span class="cell-label">File Size</span>
+                <span class="cell-value">${file.file_size_human} (${file.file_size_bytes.toLocaleString()} bytes)</span>
+            </div>
+            <div class="info-cell">
+                <span class="cell-label">Forensic Category</span>
+                <span class="cell-value badge badge-category badge-cat-${file.category.toLowerCase().replace(/\s+/g, '-')}">${file.category}</span>
+            </div>
+            <div class="info-cell">
+                <span class="cell-label">Detected MIME Type</span>
+                <span class="cell-value cell-code">${escapeHtml(file.mime_type)}</span>
+            </div>
+            <div class="info-cell">
+                <span class="cell-label">Identified Format</span>
+                <span class="cell-value">${escapeHtml(file.detected_format)}</span>
+            </div>
+            <div class="info-cell">
+                <span class="cell-label">Claimed Format (by extension)</span>
+                <span class="cell-value">${escapeHtml(file.claimed_format || 'None')}</span>
+            </div>
+            <div class="info-cell">
+                <span class="cell-label">Hidden Status</span>
+                <span class="cell-value">${file.is_hidden ? '<span class="badge badge-warning">Hidden File</span>' : '<span class="badge badge-secondary">Visible</span>'}</span>
+            </div>
+        </div>
+
+        <!-- Magic Bytes / Signature Hex Dump -->
+        <div class="modal-section-title" style="margin-top: 20px;">
+            <i class="fas fa-fingerprint"></i> File Signature (Magic Bytes - First 16 Bytes)
+        </div>
+        <div class="hex-dump-card">
+            <div class="hex-dump-row">
+                <span class="hex-label">HEX:</span>
+                <code class="hex-dump-bytes">${escapeHtml(file.magic_hex)}</code>
+            </div>
+            <div class="hex-dump-row">
+                <span class="hex-label">ASCII:</span>
+                <code class="hex-dump-ascii">${escapeHtml(file.magic_ascii)}</code>
+            </div>
+        </div>
+
+        <!-- Timestamps Section -->
+        <div class="modal-section-title" style="margin-top: 20px;">
+            <i class="fas fa-clock"></i> Recorded Timestamps
+        </div>
+        <div class="modal-info-grid">
+            <div class="info-cell">
+                <span class="cell-label">Last Modified</span>
+                <span class="cell-value">${escapeHtml(file.timestamps.last_modified)}</span>
+            </div>
+            <div class="info-cell">
+                <span class="cell-label">Analysis Timestamp</span>
+                <span class="cell-value">${escapeHtml(file.timestamps.analyzed_at)}</span>
+            </div>
+            <div class="info-cell">
+                <span class="cell-label">Creation Time</span>
+                <span class="cell-value text-muted">${escapeHtml(file.timestamps.created_time)}</span>
+            </div>
+            <div class="info-cell">
+                <span class="cell-label">Access Time</span>
+                <span class="cell-value text-muted">${escapeHtml(file.timestamps.accessed_time)}</span>
+            </div>
+        </div>
+        <p class="timestamp-disclaimer-note">
+            <i class="fas fa-info-circle"></i> ${escapeHtml(file.timestamps.note)}
+        </p>
+
+        <!-- Forensic Assessment -->
+        <div class="modal-section-title" style="margin-top: 20px;">
+            <i class="fas fa-shield-halved"></i> Forensic Assessment & Recommendations
+        </div>
+        <div class="forensic-assessment-card">
+            <p>${escapeHtml(file.forensic_assessment)}</p>
+        </div>
+    `;
+
+    modal.classList.add('show');
+}
+
+function closeDetailsModal() {
+    const modal = document.getElementById('fileDetailsModal');
+    if (modal) modal.classList.remove('show');
+}
+
+// Helpers
+function formatBytes(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const units = ['Bytes', 'KB', 'MB', 'GB'];
+    let i = 0;
+    let size = bytes;
+    while (size >= 1024 && i < units.length - 1) {
+        size /= 1024;
+        i++;
+    }
+    return (i === 0) ? size + ' Bytes' : size.toFixed(2) + ' ' + units[i];
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+</script>
+{% endblock %}

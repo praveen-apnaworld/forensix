@@ -1,0 +1,830 @@
+{% extends "base.html" %}
+
+{% block title %}Metadata Extractor{% endblock %}
+{% block page_title %}Metadata Extractor{% endblock %}
+{% block breadcrumb %}/ <span>Metadata Extractor</span>{% endblock %}
+
+{% block content %}
+
+<!-- Error Message Display -->
+{% if error %}
+<div class="flash-msg flash-error" style="margin-bottom: 20px;">
+    <i class="fas fa-exclamation-circle"></i>
+    <span>{{ error }}</span>
+    <button class="flash-close" onclick="this.parentElement.remove()">
+        <i class="fas fa-xmark"></i>
+    </button>
+</div>
+{% endif %}
+
+<div class="metadata-layout">
+
+    <!-- ============================================ -->
+    <!-- MODULE NAVIGATION TABS                       -->
+    <!-- ============================================ -->
+    <div class="metadata-tabs-nav">
+        <a href="{{ url_for('metadata', tab='single') }}" class="tab-btn {% if active_tab != 'compare' %}tab-btn-active{% endif %}">
+            <i class="fas fa-file-magnifying-glass"></i> Single Evidence Analysis
+        </a>
+        <a href="{{ url_for('metadata', tab='compare') }}" class="tab-btn {% if active_tab == 'compare' %}tab-btn-active{% endif %}">
+            <i class="fas fa-code-compare"></i> Compare Two Images (Rename & Metadata Diff)
+        </a>
+    </div>
+
+    <!-- ============================================ -->
+    <!-- TAB 1: SINGLE EVIDENCE FILE ANALYSIS         -->
+    <!-- ============================================ -->
+    {% if active_tab != 'compare' %}
+
+    <div class="card">
+        <div class="card-header">
+            <h3><i class="fas fa-tags"></i> Digital Evidence Metadata Extraction</h3>
+            <span class="badge badge-info">Images & Documents</span>
+        </div>
+        <div class="card-body">
+            <p class="section-desc">
+                Extract embedded EXIF (images) and document metadata (PDF & DOCX) to inspect camera specifications,
+                author identities, timestamps, and geographical GPS coordinates.
+                Files are inspected safely in memory and are <strong>never executed or modified</strong>.
+            </p>
+
+            <form method="POST" action="{{ url_for('metadata', tab='single') }}" enctype="multipart/form-data" id="metadataUploadForm">
+                <input type="hidden" name="action" value="extract">
+                <div class="form-group">
+                    <label class="form-label" for="metadataFileInput">
+                        <i class="fas fa-file-arrow-up"></i> Select Evidence File
+                    </label>
+                    <div class="file-upload-area" id="metadataDropZone">
+                        <input type="file" name="file" id="metadataFileInput" class="file-input"
+                               accept=".jpg,.jpeg,.png,.tif,.tiff,.pdf,.docx" required>
+                        <div class="file-upload-content" id="metaUploadPrompt">
+                            <i class="fas fa-cloud-arrow-up"></i>
+                            <p class="file-upload-text">Drag & drop evidence file here, or click to browse</p>
+                            <p class="file-upload-hint">Supported formats: JPG, JPEG, PNG, TIFF, PDF, DOCX (Max 50 MB)</p>
+                        </div>
+                        <div class="file-selected" id="metaFileSelected" style="display: none;">
+                            <i class="fas fa-file-lines"></i>
+                            <span id="selectedFileName"></span>
+                            <span id="selectedFileSize" class="file-size-tag"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-actions-row">
+                    <button type="submit" class="btn btn-primary" id="extractBtn">
+                        <i class="fas fa-magnifying-glass-chart"></i> Extract Metadata
+                    </button>
+                    {% if result %}
+                    <a href="{{ url_for('metadata', tab='single') }}" class="btn btn-secondary">
+                        <i class="fas fa-arrow-rotate-left"></i> Analyze Another File
+                    </a>
+                    {% endif %}
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Results for Single File Analysis -->
+    {% if result %}
+    <div class="metadata-results-section" id="resultsSection">
+
+        <!-- Rename / Identical Content Detected Banner (Feature 1) -->
+        {% if result.identical_content_detected %}
+        <div class="modal-banner banner-match" style="margin-bottom: 20px;">
+            <i class="fas fa-clone"></i>
+            <div>
+                <strong>Identical Content Detected – Filename or file path may differ.</strong>
+                <p>
+                    This file has an identical SHA-256 hash (<code>{{ result.sha256[:16] }}...</code>) to another evidence file analyzed in this session:
+                    <strong>{{ result.previous_identical_filename }}</strong>.
+                    Renaming a file in an operating system only alters its directory entry in the filesystem; it does NOT alter its binary byte stream or embedded EXIF metadata.
+                </p>
+                <p style="font-size: 11.5px; opacity: 0.85; margin-top: 4px;">
+                    <i class="fas fa-shield-halved"></i> <strong>Forensic Note:</strong> Matching hashes confirm bit-level content identity, but investigators must not conclude a rename occurred solely from matching hashes without corroborating filesystem records.
+                </p>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- EXIF Header / Camera Status Banner (Feature 2) -->
+        <div class="modal-banner {% if result.camera_status == 'Camera Details Available' %}banner-match{% elif result.camera_status == 'Partial Camera Metadata' %}banner-match{% elif result.camera_status == 'General EXIF Metadata Available' %}banner-info{% else %}banner-warning{% endif %}" style="margin-bottom: 20px;">
+            {% if result.camera_status == 'Camera Details Available' %}
+                <i class="fas fa-camera"></i>
+            {% elif result.camera_status == 'Partial Camera Metadata' %}
+                <i class="fas fa-circle-info"></i>
+            {% elif result.camera_status == 'General EXIF Metadata Available' %}
+                <i class="fas fa-sliders"></i>
+            {% else %}
+                <i class="fas fa-triangle-exclamation"></i>
+            {% endif %}
+            <div>
+                <strong>{{ result.camera_status }}</strong>
+                <p>{{ result.exif_message }}</p>
+            </div>
+        </div>
+
+        <!-- Header File Overview Card -->
+        <div class="card result-card">
+            <div class="card-header">
+                <h3>
+                    <i class="fas fa-file-circle-check" style="color: #10b981;"></i>
+                    Metadata Analysis: {{ result.filename }}
+                </h3>
+                <div class="header-actions">
+                    <!-- Export JSON Form -->
+                    <form method="POST" action="{{ url_for('metadata_export_json') }}" style="display: inline;">
+                        <input type="hidden" name="filename" value="{{ result.filename }}">
+                        <input type="hidden" name="export_data" value="{{ result.export_json }}">
+                        <button type="submit" class="btn btn-sm btn-secondary" title="Download metadata as JSON">
+                            <i class="fas fa-download"></i> Export JSON
+                        </button>
+                    </form>
+                    <button type="button" class="btn btn-sm btn-secondary" onclick="copyRawJson()" id="copyJsonBtn">
+                        <i class="fas fa-copy"></i> Copy JSON
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="meta-overview-grid">
+                    <div class="overview-item">
+                        <span class="overview-label">File Type</span>
+                        <span class="overview-val badge badge-info">{{ result.format_name }}</span>
+                    </div>
+                    <div class="overview-item">
+                        <span class="overview-label">File Size</span>
+                        <span class="overview-val">{{ result.file_size_formatted }}</span>
+                    </div>
+                    <div class="overview-item">
+                        <span class="overview-label">Camera Status</span>
+                        <span class="overview-val badge {{ result.exif_status_class }}">{{ result.camera_status }}</span>
+                    </div>
+                    <div class="overview-item" style="grid-column: span 2;">
+                        <span class="overview-label">
+                            SHA-256 Hash
+                            <span class="tooltip-wrapper">
+                                <i class="fas fa-circle-question tooltip-icon"></i>
+                                <span class="tooltip-box">
+                                    Cryptographic fingerprint. Renaming a file does not alter this hash or the embedded EXIF metadata.
+                                </span>
+                            </span>
+                        </span>
+                        <span class="overview-val hash-val" style="font-size: 12px; display: flex; align-items: center; gap: 8px;">
+                            <code>{{ result.sha256 }}</code>
+                            <button type="button" class="btn-icon" onclick="copyToClipboard('{{ result.sha256 }}', this)" title="Copy SHA-256">
+                                <i class="fas fa-copy"></i>
+                            </button>
+                        </span>
+                    </div>
+                    <div class="overview-item">
+                        <span class="overview-label">Total Fields Inspected</span>
+                        <span class="overview-val">{{ result.stats.total_fields }}</span>
+                    </div>
+                    <div class="overview-item">
+                        <span class="overview-label">Available Fields</span>
+                        <span class="overview-val" style="color: #34d399; font-weight: 600;">
+                            {{ result.stats.available_fields }}
+                        </span>
+                    </div>
+                    <div class="overview-item">
+                        <span class="overview-label">
+                            Not Recorded in File
+                            <span class="tooltip-wrapper">
+                                <i class="fas fa-circle-question tooltip-icon"></i>
+                                <span class="tooltip-box">
+                                    In digital forensics, missing optional metadata (such as camera details, optics, or GPS) is completely normal. It indicates the capture device or authoring application did not write the tags, or they were stripped. This is not a software error.
+                                </span>
+                            </span>
+                        </span>
+                        <span class="overview-val" style="color: #94a3b8;">
+                            {{ result.stats.not_recorded_fields }}
+                        </span>
+                    </div>
+                    <div class="overview-item">
+                        <span class="overview-label">Extraction Errors</span>
+                        <span class="overview-val {% if result.stats.extraction_errors > 0 %}text-danger{% else %}text-muted{% endif %}" style="font-weight: 600;">
+                            {{ result.stats.extraction_errors }}
+                        </span>
+                    </div>
+                    <div class="overview-item">
+                        <span class="overview-label">
+                            Available Metadata Fields
+                            <span class="tooltip-wrapper">
+                                <i class="fas fa-circle-info tooltip-icon"></i>
+                                <span class="tooltip-box">
+                                    Calculated as (Available Fields ÷ Total Inspected Fields) × 100. Missing optional fields are not counted as extraction errors.
+                                </span>
+                            </span>
+                        </span>
+                        <span class="overview-val badge {% if result.stats.available_pct >= 50 %}badge-success{% elif result.stats.available_pct > 0 %}badge-warning{% else %}badge-secondary{% endif %}">
+                            {{ result.stats.available_pct }}%
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Forensic Educational Notice Banner -->
+        <div class="meta-notice-banner">
+            <i class="fas fa-circle-info"></i>
+            <div class="meta-notice-text">
+                <strong>Forensic Reality: Missing Optional Metadata is Normal</strong>
+                <p>
+                    Unlike mandatory container properties (such as pixel dimensions and image format), EXIF camera details, optical settings, and GPS telemetry are <em>optional application-level tags</em>.
+                    Physical cameras only populate fields when configured, and web platforms (social media, messaging services, image editors) routinely strip EXIF headers for privacy and bandwidth conservation.
+                    Fields marked <span class="badge badge-secondary badge-sm"><i class="fas fa-circle-minus"></i> Not Recorded in File</span> represent verified absence of data in the file stream—never an extraction malfunction.
+                </p>
+            </div>
+        </div>
+
+        <!-- Sensitive GPS Telemetry Banner (If Present) -->
+        {% if result.has_gps %}
+        <div class="gps-telemetry-banner">
+            <div class="gps-banner-header">
+                <div class="gps-icon-badge">
+                    <i class="fas fa-location-dot"></i>
+                </div>
+                <div class="gps-banner-text">
+                    <h4>Geographical Location Telemetry Detected</h4>
+                    <p>{{ result.gps_info.warning }}</p>
+                </div>
+                <div class="gps-banner-action">
+                    <button type="button" class="btn btn-sm btn-primary" onclick="copyGpsCoordinates('{{ result.gps_info.copyable_coordinates }}')" id="copyGpsBtn">
+                        <i class="fas fa-copy"></i> Copy Coordinates
+                    </button>
+                </div>
+            </div>
+            <div class="gps-coords-grid">
+                <div class="coord-box">
+                    <span class="coord-label">Latitude (DMS)</span>
+                    <span class="coord-val">{{ result.gps_info.latitude_dms }}</span>
+                </div>
+                <div class="coord-box">
+                    <span class="coord-label">Longitude (DMS)</span>
+                    <span class="coord-val">{{ result.gps_info.longitude_dms }}</span>
+                </div>
+                <div class="coord-box">
+                    <span class="coord-label">Latitude (Decimal)</span>
+                    <span class="coord-val coord-highlight">{{ result.gps_info.latitude_decimal }}</span>
+                </div>
+                <div class="coord-box">
+                    <span class="coord-label">Longitude (Decimal)</span>
+                    <span class="coord-val coord-highlight">{{ result.gps_info.longitude_decimal }}</span>
+                </div>
+                <div class="coord-box">
+                    <span class="coord-label">GPS Altitude</span>
+                    <span class="coord-val">{{ result.gps_info.altitude }}</span>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Categorized Metadata Groups & Tables -->
+        <div class="metadata-groups-grid">
+            {% for group in result.groups %}
+            <div class="card meta-group-card">
+                <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                    <h3><i class="{{ group.icon }}"></i> {{ group.title }}</h3>
+                    {% if group.badge %}
+                    <span class="badge {{ group.badge_class }}">{{ group.badge }}</span>
+                    {% endif %}
+                </div>
+                {% if group.description %}
+                <div class="group-sub-desc">
+                    <i class="fas fa-info-circle" style="margin-right: 4px; color: #38bdf8;"></i> {{ group.description }}
+                </div>
+                {% endif %}
+                <div class="card-body" style="padding: 0;">
+                    <table class="data-table meta-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 38%;">Property</th>
+                                <th style="width: 42%;">Extracted Value</th>
+                                <th style="width: 20%; text-align: right;">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for field in group.fields %}
+                            <tr>
+                                <td class="meta-prop-name">
+                                    <strong>{{ field.name }}</strong>
+                                    {% if field.is_mandatory %}
+                                    <span class="badge badge-info badge-sm" style="margin-left: 4px; font-size: 9px; padding: 1px 5px;" title="Mandatory container property">Mandatory</span>
+                                    {% endif %}
+                                </td>
+                                <td class="meta-prop-value">
+                                    {% if field.status == 'present' %}
+                                        <span class="value-present">{{ field.value }}</span>
+                                    {% elif field.status == 'error' %}
+                                        <span class="value-error"><i class="fas fa-triangle-exclamation"></i> {{ field.value }}</span>
+                                    {% else %}
+                                        <span class="value-not-recorded"><i class="fas fa-minus"></i> Not Recorded in File</span>
+                                    {% endif %}
+                                </td>
+                                <td style="text-align: right;">
+                                    {% if field.status == 'present' %}
+                                        <span class="badge badge-success badge-sm"><i class="fas fa-check"></i> Present</span>
+                                    {% elif field.status == 'error' %}
+                                        <span class="badge badge-danger badge-sm"><i class="fas fa-triangle-exclamation"></i> Extraction Error</span>
+                                    {% else %}
+                                        <span class="badge badge-secondary badge-sm"><i class="fas fa-circle-minus"></i> Not Recorded in File</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- Raw EXIF Debug Section -->
+        <div class="card meta-group-card" style="margin-top: 24px;">
+            <div class="card-header">
+                <h3><i class="fas fa-terminal" style="color: #38bdf8;"></i> Raw EXIF Inspection (Debug & Verification)</h3>
+                <span class="badge {% if result.raw_tags_list|length > 0 %}badge-info{% else %}badge-secondary{% endif %}">
+                    {{ result.raw_tags_list|length }} Raw Tags Recovered
+                </span>
+            </div>
+            <div class="card-body">
+                {% if result.raw_tags_list|length > 0 %}
+                    <p class="section-desc" style="margin-bottom: 14px;">
+                        Forensic audit view of all raw binary EXIF tags recovered from the file header across 0th, Exif Sub-IFD, and GPS Sub-IFD.
+                    </p>
+                    <div class="table-responsive" style="max-height: 420px; overflow-y: auto;">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 25%;">Tag ID</th>
+                                    <th style="width: 30%;">Tag Name</th>
+                                    <th style="width: 20%;">IFD Category</th>
+                                    <th style="width: 25%;">Raw Value</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for tag in result.raw_tags_list %}
+                                <tr>
+                                    <td><code>{{ tag.tag_id }}</code></td>
+                                    <td><strong>{{ tag.name }}</strong></td>
+                                    <td><span class="badge badge-secondary badge-sm">{{ tag.ifd }}</span></td>
+                                    <td class="cell-code" style="word-break: break-all;">{{ tag.value }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <div class="empty-state" style="padding: 24px;">
+                        <i class="fas fa-file-excel"></i>
+                        <h4 style="color: #94a3b8; margin-bottom: 6px;">No Raw EXIF Tags Embedded</h4>
+                        <p class="empty-hint" style="max-width: 500px; margin: 0 auto;">
+                            The uploaded file contains no raw EXIF header (APP1 segment). Camera details and shooting metadata are not present in the original file. ForensiX does not fabricate missing camera details.
+                        </p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Forensic Assessment Card -->
+        <div class="card forensic-assessment-box" style="margin-top: 24px;">
+            <div class="card-header">
+                <h3><i class="fas fa-shield-halved" style="color: #3b82f6;"></i> Forensic Interpretation & Cautionary Notes</h3>
+            </div>
+            <div class="card-body">
+                <p class="assessment-text">{{ result.forensic_assessment }}</p>
+                <div class="caveats-list">
+                    <div class="caveat-item">
+                        <i class="fas fa-circle-exclamation text-warning"></i>
+                        <span><strong>Malleability:</strong> Metadata can be easily modified, spoofed, or stripped using standard tools (e.g. ExifTool, Photoshop, or social media compression).</span>
+                    </div>
+                    <div class="caveat-item">
+                        <i class="fas fa-circle-exclamation text-warning"></i>
+                        <span><strong>Non-Attribution:</strong> An author or camera serial in metadata indicates the claimed origin, not conclusive proof of who operated the machine.</span>
+                    </div>
+                    <div class="caveat-item">
+                        <i class="fas fa-circle-check text-success"></i>
+                        <span><strong>Best Practice:</strong> Always corroborate metadata findings with filesystem timestamps, master file table ($MFT) records, and cryptographic hashes.</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+    {% endif %}
+
+    {% endif %}
+
+    <!-- ============================================ -->
+    <!-- TAB 2: COMPARE TWO IMAGES (Features 1 & 3)   -->
+    <!-- ============================================ -->
+    {% if active_tab == 'compare' %}
+
+    <div class="card">
+        <div class="card-header">
+            <h3><i class="fas fa-code-compare"></i> Side-by-Side Metadata & Hash Comparison</h3>
+            <span class="badge badge-info">Rename Detection & EXIF Diff</span>
+        </div>
+        <div class="card-body">
+            <p class="section-desc">
+                Select two digital evidence images to compare their SHA-256 cryptographic hashes and inspect differences
+                across embedded EXIF metadata fields. <strong>Renaming a file in the filesystem does not change its embedded EXIF metadata or SHA-256 hash.</strong>
+            </p>
+
+            <form method="POST" action="{{ url_for('metadata', tab='compare') }}" enctype="multipart/form-data" id="comparisonForm">
+                <input type="hidden" name="action" value="compare">
+                <div class="compare-upload-grid">
+                    <div class="compare-file-box">
+                        <label class="form-label" for="compFile1">
+                            <i class="fas fa-file-image text-cyan"></i> Evidence Image A (Reference)
+                        </label>
+                        <input type="file" name="file1" id="compFile1" class="form-control" accept=".jpg,.jpeg,.png,.tif,.tiff" required>
+                        <span class="file-hint">Original or baseline evidence file</span>
+                    </div>
+                    <div class="compare-file-box">
+                        <label class="form-label" for="compFile2">
+                            <i class="fas fa-file-image text-warning"></i> Evidence Image B (Suspect / Renamed / Modified)
+                        </label>
+                        <input type="file" name="file2" id="compFile2" class="form-control" accept=".jpg,.jpeg,.png,.tif,.tiff" required>
+                        <span class="file-hint">Second evidence file to test for rename or tampering</span>
+                    </div>
+                </div>
+
+                <div class="form-actions-row" style="margin-top: 18px;">
+                    <button type="submit" class="btn btn-primary" id="runCompareBtn">
+                        <i class="fas fa-code-compare"></i> Compare Metadata & Integrity
+                    </button>
+                    {% if comparison %}
+                    <a href="{{ url_for('metadata', tab='compare') }}" class="btn btn-secondary">
+                        <i class="fas fa-arrow-rotate-left"></i> New Comparison
+                    </a>
+                    {% endif %}
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Comparison Results Section -->
+    {% if comparison %}
+    <div class="metadata-results-section" id="comparisonResultsSection">
+
+        <!-- Rename Detection Banner (Feature 1) -->
+        <div class="modal-banner {% if comparison.identical_content %}banner-match{% else %}banner-warning{% endif %}" style="margin-bottom: 20px;">
+            {% if comparison.identical_content %}
+                <i class="fas fa-clone"></i>
+            {% else %}
+                <i class="fas fa-triangle-exclamation"></i>
+            {% endif %}
+            <div>
+                <strong>{{ comparison.match_title }}</strong>
+                <p style="margin-bottom: 6px;">{{ comparison.rename_explanation }}</p>
+                {% if comparison.forensic_disclaimer %}
+                <p style="font-size: 11.5px; opacity: 0.9; margin-top: 6px;">
+                    <i class="fas fa-shield-halved"></i> {{ comparison.forensic_disclaimer }}
+                </p>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- File Integrity & Hash Comparison Table -->
+        <div class="card result-card" style="margin-bottom: 24px;">
+            <div class="card-header">
+                <h3><i class="fas fa-fingerprint" style="color: #38bdf8;"></i> Cryptographic & File Integrity Comparison</h3>
+                <div class="header-badges">
+                    <span class="badge {{ comparison.match_badge_class }}">{{ comparison.match_badge }}</span>
+                </div>
+            </div>
+            <div class="card-body" style="padding: 0;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 20%;">Property</th>
+                            <th style="width: 40%;"><i class="fas fa-file-image text-cyan"></i> Evidence A: {{ comparison.file1.filename }}</th>
+                            <th style="width: 40%;"><i class="fas fa-file-image text-warning"></i> Evidence B: {{ comparison.file2.filename }}</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Filename</strong></td>
+                            <td><code>{{ comparison.file1.filename }}</code></td>
+                            <td><code>{{ comparison.file2.filename }}</code></td>
+                        </tr>
+                        <tr>
+                            <td><strong>File Size</strong></td>
+                            <td>{{ comparison.file1.file_size }}</td>
+                            <td>{{ comparison.file2.file_size }}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>SHA-256 Hash</strong></td>
+                            <td class="cell-code" style="word-break: break-all;">
+                                <code>{{ comparison.file1.sha256 }}</code>
+                                <button type="button" class="btn-icon" onclick="copyToClipboard('{{ comparison.file1.sha256 }}', this)" title="Copy SHA-256">
+                                    <i class="fas fa-copy"></i>
+                                </button>
+                            </td>
+                            <td class="cell-code" style="word-break: break-all;">
+                                <code>{{ comparison.file2.sha256 }}</code>
+                                <button type="button" class="btn-icon" onclick="copyToClipboard('{{ comparison.file2.sha256 }}', this)" title="Copy SHA-256">
+                                    <i class="fas fa-copy"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><strong>Camera Status</strong></td>
+                            <td><span class="badge badge-info">{{ comparison.file1.camera_status }}</span></td>
+                            <td><span class="badge badge-info">{{ comparison.file2.camera_status }}</span></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Integrity Verdict</strong></td>
+                            <td colspan="2" style="text-align: center;">
+                                {% if comparison.hashes_match %}
+                                    <span class="badge badge-success"><i class="fas fa-check-double"></i> Cryptographic Hashes Match (100% Identical Payload)</span>
+                                {% else %}
+                                    <span class="badge badge-warning"><i class="fas fa-not-equal"></i> Cryptographic Hashes Differ (Distinct Files)</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Metric Summary Chips -->
+        <div class="comp-stats-chips" style="margin-bottom: 20px;">
+            <div class="comp-chip chip-identical">
+                <i class="fas fa-check"></i>
+                <span><strong>{{ comparison.stats.identical_count }}</strong> Identical Fields</span>
+            </div>
+            <div class="comp-chip chip-different">
+                <i class="fas fa-not-equal"></i>
+                <span><strong>{{ comparison.stats.different_count }}</strong> Different Fields</span>
+            </div>
+            <div class="comp-chip chip-missing">
+                <i class="fas fa-circle-minus"></i>
+                <span><strong>{{ comparison.stats.missing_count }}</strong> Missing / Unrecorded Fields</span>
+            </div>
+        </div>
+
+        <!-- 1. IDENTICAL METADATA FIELDS TABLE (Feature 3) -->
+        <div class="card meta-group-card" style="margin-bottom: 24px;">
+            <div class="card-header">
+                <h3><i class="fas fa-check-circle" style="color: #10b981;"></i> Identical Metadata Fields</h3>
+                <span class="badge badge-success">{{ comparison.identical_fields|length }} Matching Fields</span>
+            </div>
+            <div class="card-body" style="padding: 0;">
+                {% if comparison.identical_fields %}
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 30%;">Property</th>
+                            <th style="width: 25%;">Category</th>
+                            <th style="width: 45%;">Matching Extracted Value</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in comparison.identical_fields %}
+                        <tr>
+                            <td><strong>{{ item.name }}</strong></td>
+                            <td><span class="badge badge-secondary badge-sm">{{ item.group }}</span></td>
+                            <td class="value-present" style="font-family: 'JetBrains Mono', monospace; font-size: 12px;">
+                                <i class="fas fa-check text-success" style="margin-right: 6px;"></i>{{ item.value }}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <div class="empty-state" style="padding: 20px;">
+                    <p class="empty-hint">No identical populated metadata fields found between the two files.</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- 2. DIFFERENT METADATA FIELDS TABLE (Feature 3) -->
+        <div class="card meta-group-card" style="margin-bottom: 24px;">
+            <div class="card-header">
+                <h3><i class="fas fa-triangle-exclamation" style="color: #f59e0b;"></i> Different Metadata Fields</h3>
+                <span class="badge {% if comparison.different_fields %}badge-warning{% else %}badge-secondary{% endif %}">
+                    {{ comparison.different_fields|length }} Conflicting Fields
+                </span>
+            </div>
+            <div class="card-body" style="padding: 0;">
+                {% if comparison.different_fields %}
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 25%;">Property</th>
+                            <th style="width: 20%;">Category</th>
+                            <th style="width: 27%;"><i class="fas fa-file-image text-cyan"></i> {{ comparison.file1.filename }}</th>
+                            <th style="width: 28%;"><i class="fas fa-file-image text-warning"></i> {{ comparison.file2.filename }}</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in comparison.different_fields %}
+                        <tr>
+                            <td><strong>{{ item.name }}</strong></td>
+                            <td><span class="badge badge-secondary badge-sm">{{ item.group }}</span></td>
+                            <td style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #38bdf8;">{{ item.val1 }}</td>
+                            <td style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #fbbf24;">{{ item.val2 }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <div class="empty-state" style="padding: 20px;">
+                    <p class="empty-hint"><i class="fas fa-check-circle text-success" style="margin-right: 6px;"></i> No differing metadata values detected between populated fields.</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- 3. MISSING METADATA FIELDS (SEPARATED) (Feature 3) -->
+        <div class="card meta-group-card" style="margin-bottom: 24px;">
+            <div class="card-header">
+                <h3><i class="fas fa-circle-minus" style="color: #94a3b8;"></i> Missing / Unrecorded Metadata Fields</h3>
+                <span class="badge badge-secondary">{{ comparison.missing_fields|length }} Properties</span>
+            </div>
+            <div class="card-body" style="padding: 0;">
+                <div class="group-sub-desc">
+                    Properties that are not recorded in one or both files. In digital forensics, unrecorded optional tags are normal and separated from conflicting differences.
+                </div>
+                {% if comparison.missing_fields %}
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 25%;">Property</th>
+                            <th style="width: 15%;">Category</th>
+                            <th style="width: 22%;"><i class="fas fa-file-image text-cyan"></i> {{ comparison.file1.filename }}</th>
+                            <th style="width: 22%;"><i class="fas fa-file-image text-warning"></i> {{ comparison.file2.filename }}</th>
+                            <th style="width: 16%; text-align: right;">Presence Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in comparison.missing_fields %}
+                        <tr>
+                            <td><strong>{{ item.name }}</strong></td>
+                            <td><span class="badge badge-secondary badge-sm">{{ item.group }}</span></td>
+                            <td>
+                                {% if item.status1 == 'present' %}
+                                    <span class="value-present" style="font-size: 11.5px;">{{ item.val1 }}</span>
+                                {% else %}
+                                    <span class="value-not-recorded"><i class="fas fa-minus"></i> Not Recorded</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if item.status2 == 'present' %}
+                                    <span class="value-present" style="font-size: 11.5px;">{{ item.val2 }}</span>
+                                {% else %}
+                                    <span class="value-not-recorded"><i class="fas fa-minus"></i> Not Recorded</span>
+                                {% endif %}
+                            </td>
+                            <td style="text-align: right;">
+                                {% if item.missing_type == 'file1_only' %}
+                                    <span class="badge badge-info badge-sm">Recorded in A only</span>
+                                {% elif item.missing_type == 'file2_only' %}
+                                    <span class="badge badge-warning badge-sm">Recorded in B only</span>
+                                {% else %}
+                                    <span class="badge badge-secondary badge-sm">Missing in both</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <div class="empty-state" style="padding: 20px;">
+                    <p class="empty-hint">All metadata fields are fully populated in both files.</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+    </div>
+    {% endif %}
+
+    {% endif %}
+
+</div>
+
+<!-- Hidden storage for raw JSON -->
+{% if result %}
+<textarea id="rawJsonData" style="display: none;">{{ result.export_json }}</textarea>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+/**
+ * ForensiX Metadata Extractor - Client interactions
+ */
+document.addEventListener('DOMContentLoaded', function() {
+    const fileInput = document.getElementById('metadataFileInput');
+    const uploadPrompt = document.getElementById('metaUploadPrompt');
+    const fileSelected = document.getElementById('metaFileSelected');
+    const nameEl = document.getElementById('selectedFileName');
+    const sizeEl = document.getElementById('selectedFileSize');
+    const dropZone = document.getElementById('metadataDropZone');
+
+    if (fileInput && dropZone) {
+        fileInput.addEventListener('change', function() {
+            if (this.files && this.files[0]) {
+                const file = this.files[0];
+                nameEl.textContent = file.name;
+                sizeEl.textContent = formatBytes(file.size);
+                uploadPrompt.style.display = 'none';
+                fileSelected.style.display = 'flex';
+            } else {
+                uploadPrompt.style.display = 'flex';
+                fileSelected.style.display = 'none';
+            }
+        });
+
+        // Drag and drop handlers
+        ['dragenter', 'dragover'].forEach(evt => {
+            dropZone.addEventListener(evt, function(e) {
+                e.preventDefault();
+                dropZone.classList.add('dragover');
+            });
+        });
+
+        ['dragleave', 'drop'].forEach(evt => {
+            dropZone.addEventListener(evt, function(e) {
+                e.preventDefault();
+                dropZone.classList.remove('dragover');
+            });
+        });
+
+        dropZone.addEventListener('drop', function(e) {
+            e.preventDefault();
+            if (e.dataTransfer && e.dataTransfer.files.length > 0) {
+                fileInput.files = e.dataTransfer.files;
+                fileInput.dispatchEvent(new Event('change'));
+            }
+        });
+    }
+
+    // Auto-scroll to results if present
+    const resultsSection = document.getElementById('resultsSection') || document.getElementById('comparisonResultsSection');
+    if (resultsSection) {
+        resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+});
+
+function copyGpsCoordinates(coords) {
+    if (!coords) return;
+    navigator.clipboard.writeText(coords).then(() => {
+        const btn = document.getElementById('copyGpsBtn');
+        if (btn) {
+            const originalHtml = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-check"></i> Coordinates Copied!';
+            btn.classList.add('btn-success');
+            setTimeout(() => {
+                btn.innerHTML = originalHtml;
+                btn.classList.remove('btn-success');
+            }, 2000);
+        }
+    });
+}
+
+function copyRawJson() {
+    const jsonEl = document.getElementById('rawJsonData');
+    if (!jsonEl) return;
+    navigator.clipboard.writeText(jsonEl.value).then(() => {
+        const btn = document.getElementById('copyJsonBtn');
+        if (btn) {
+            const originalHtml = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-check"></i> Copied!';
+            setTimeout(() => {
+                btn.innerHTML = originalHtml;
+            }, 2000);
+        }
+    });
+}
+
+function copyToClipboard(text, btnEl) {
+    if (!text) return;
+    navigator.clipboard.writeText(text).then(() => {
+        if (btnEl) {
+            const orig = btnEl.innerHTML;
+            btnEl.innerHTML = '<i class="fas fa-check text-success"></i>';
+            setTimeout(() => {
+                btnEl.innerHTML = orig;
+            }, 2000);
+        }
+    });
+}
+
+function formatBytes(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const units = ['Bytes', 'KB', 'MB', 'GB'];
+    let i = 0;
+    let size = bytes;
+    while (size >= 1024 && i < units.length - 1) {
+        size /= 1024;
+        i++;
+    }
+    return (i === 0) ? size + ' Bytes' : size.toFixed(2) + ' ' + units[i];
+}
+</script>
+{% endblock %}

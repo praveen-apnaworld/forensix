@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+
+{% block title %}Cases{% endblock %}
+{% block page_title %}Investigation Cases{% endblock %}
+{% block breadcrumb %}/ <span>Cases</span>{% endblock %}
+
+{% block content %}
+<div class="page-actions">
+    <button class="btn btn-primary" onclick="document.getElementById('newCaseModal').classList.add('show')">
+        <i class="fas fa-folder-plus"></i> New Case
+    </button>
+</div>
+
+{% if cases|length > 0 %}
+<div class="card">
+    <div class="card-header">
+        <h3><i class="fas fa-folder-open"></i> All Cases ({{ cases|length }})</h3>
+    </div>
+    <div class="card-body">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Case ID</th>
+                    <th>Title</th>
+                    <th>Description</th>
+                    <th>Investigator</th>
+                    <th>Status</th>
+                    <th>Created</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for case in cases %}
+                <tr>
+                    <td><span class="badge badge-info">{{ case['case_id'] }}</span></td>
+                    <td>{{ case['title'] }}</td>
+                    <td>{{ case['description'][:60] }}{% if case['description']|length > 60 %}...{% endif %}</td>
+                    <td>{{ case['investigator'] }}</td>
+                    <td>
+                        <span class="badge {% if case['status'] == 'Open' %}badge-success{% elif case['status'] == 'Closed' %}badge-secondary{% else %}badge-warning{% endif %}">
+                            {{ case['status'] }}
+                        </span>
+                    </td>
+                    <td>{{ case['created_at'][:16] }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% else %}
+<div class="card">
+    <div class="card-body">
+        <div class="empty-state large">
+            <i class="fas fa-folder-open"></i>
+            <h3>No Cases Yet</h3>
+            <p>Create your first investigation case to get started.</p>
+            <button class="btn btn-primary" onclick="document.getElementById('newCaseModal').classList.add('show')">
+                <i class="fas fa-folder-plus"></i> Create First Case
+            </button>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- New Case Modal -->
+<div class="modal-overlay" id="newCaseModal">
+    <div class="modal" style="max-width: 520px; background: #1e293b; border: 1px solid #334155; border-radius: 8px; color: #f8fafc;">
+        <div class="modal-header" style="border-bottom: 1px solid #334155; padding: 16px 20px; display: flex; justify-content: space-between; align-items: center;">
+            <h3 style="margin: 0; font-size: 16px; color: #38bdf8;"><i class="fas fa-folder-plus"></i> Create New Forensic Case</h3>
+            <button class="modal-close" type="button" onclick="document.getElementById('newCaseModal').classList.remove('show')" style="background: none; border: none; color: #94a3b8; font-size: 18px; cursor: pointer;">
+                <i class="fas fa-xmark"></i>
+            </button>
+        </div>
+        <form method="POST" action="{{ url_for('create_case') }}">
+            <div class="modal-body" style="padding: 20px;">
+                <div style="margin-bottom: 14px;">
+                    <label style="display: block; font-size: 13px; font-weight: 600; color: #94a3b8; margin-bottom: 6px;">
+                        Case ID <span style="color: #ef4444;">*</span>:
+                    </label>
+                    <input type="text" name="case_id" required placeholder="e.g. CASE-2026-ALPHA" class="form-control" style="background: #0f172a; border-color: #334155; color: #f8fafc;" />
+                </div>
+                <div style="margin-bottom: 14px;">
+                    <label style="display: block; font-size: 13px; font-weight: 600; color: #94a3b8; margin-bottom: 6px;">
+                        Case Title <span style="color: #ef4444;">*</span>:
+                    </label>
+                    <input type="text" name="title" required placeholder="e.g. Unauthorized Database Access Investigation" class="form-control" style="background: #0f172a; border-color: #334155; color: #f8fafc;" />
+                </div>
+                <div style="margin-bottom: 14px;">
+                    <label style="display: block; font-size: 13px; font-weight: 600; color: #94a3b8; margin-bottom: 6px;">
+                        Lead Forensic Investigator:
+                    </label>
+                    <input type="text" name="investigator" value="Lead Forensic Examiner" class="form-control" style="background: #0f172a; border-color: #334155; color: #f8fafc;" />
+                </div>
+                <div style="margin-bottom: 14px;">
+                    <label style="display: block; font-size: 13px; font-weight: 600; color: #94a3b8; margin-bottom: 6px;">
+                        Description / Scope:
+                    </label>
+                    <textarea name="description" rows="3" placeholder="Summary of investigation objectives..." class="form-control" style="background: #0f172a; border-color: #334155; color: #f8fafc;"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer" style="border-top: 1px solid #334155; padding: 12px 20px; display: flex; justify-content: flex-end; gap: 10px;">
+                <button type="button" class="btn btn-secondary" onclick="document.getElementById('newCaseModal').classList.remove('show')">Cancel</button>
+                <button type="submit" class="btn btn-primary"><i class="fas fa-check"></i> Register Case</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

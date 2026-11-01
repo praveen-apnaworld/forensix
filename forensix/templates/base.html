@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Dashboard{% endblock %} | Digital Forensics Toolkit</title>
+
+    <!-- Google Fonts - Clean professional typography -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+    <!-- Chart.js for data visualization -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/favicon.png') }}">
+
+    <!-- Our custom styles -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+    <!-- ============================================ -->
+    <!-- SIDEBAR NAVIGATION                           -->
+    <!-- ============================================ -->
+    <nav class="sidebar" id="sidebar">
+        <!-- App Logo & Title -->
+        <div class="sidebar-header">
+            <div class="logo">
+                <img src="{{ url_for('static', filename='img/logo.png') }}" alt="ForensiX Logo" class="logo-img">
+            </div>
+            <h1 class="app-title">ForensiX</h1>
+            <p class="app-subtitle">Digital Forensics Toolkit</p>
+        </div>
+
+        <!-- Navigation Links -->
+        <ul class="nav-menu">
+            <li class="nav-item">
+                <a href="{{ url_for('dashboard') }}" class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}">
+                    <span class="tool-icon icon-dashboard"><i class="fas fa-chart-line"></i></span>
+                    <span>Dashboard</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a href="{{ url_for('cases') }}" class="nav-link {% if request.endpoint == 'cases' %}active{% endif %}">
+                    <span class="tool-icon icon-cases"><i class="fas fa-folder-open"></i></span>
+                    <span>Cases</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a href="{{ url_for('evidence') }}" class="nav-link {% if request.endpoint == 'evidence' %}active{% endif %}">
+                    <span class="tool-icon icon-evidence"><i class="fas fa-box-archive"></i></span>
+                    <span>Evidence Manager</span>
+                </a>
+            </li>
+
+            <li class="nav-divider"></li>
+            <li class="nav-section-title">Analysis Tools</li>
+
+            <li class="nav-item">
+                <a href="{{ url_for('hash_analyzer') }}" class="nav-link {% if request.endpoint == 'hash_analyzer' %}active{% endif %}">
+                    <span class="tool-icon icon-hash"><i class="fas fa-fingerprint"></i></span>
+                    <span>Hash Analyzer</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a href="{{ url_for('file_analyzer') }}" class="nav-link {% if request.endpoint == 'file_analyzer' %}active{% endif %}">
+                    <span class="tool-icon icon-file"><i class="fas fa-file-magnifying-glass"></i></span>
+                    <span>File Analyzer</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a href="{{ url_for('metadata') }}" class="nav-link {% if request.endpoint == 'metadata' %}active{% endif %}">
+                    <span class="tool-icon icon-metadata"><i class="fas fa-tags"></i></span>
+                    <span>Metadata Extractor</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a href="{{ url_for('keyword_search') }}" class="nav-link {% if request.endpoint == 'keyword_search' %}active{% endif %}">
+                    <span class="tool-icon icon-keyword"><i class="fas fa-magnifying-glass"></i></span>
+                    <span>Keyword Search</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a href="{{ url_for('timeline') }}" class="nav-link {% if request.endpoint == 'timeline' %}active{% endif %}">
+                    <span class="tool-icon icon-timeline"><i class="fas fa-clock-rotate-left"></i></span>
+                    <span>Timeline</span>
+                </a>
+            </li>
+
+            <li class="nav-divider"></li>
+
+            <li class="nav-item">
+                <a href="{{ url_for('reports') }}" class="nav-link {% if request.endpoint == 'reports' %}active{% endif %}">
+                    <span class="tool-icon icon-reports"><i class="fas fa-file-pdf"></i></span>
+                    <span>Reports</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a href="{{ url_for('settings') }}" class="nav-link {% if request.endpoint == 'settings' %}active{% endif %}">
+                    <span class="tool-icon icon-settings"><i class="fas fa-gear"></i></span>
+                    <span>Settings</span>
+                </a>
+            </li>
+        </ul>
+
+        <!-- Sidebar Footer -->
+        <div class="sidebar-footer">
+            <div class="version-info">
+                <i class="fas fa-code-branch"></i>
+                <span>v1.0.0 — Educational Use Only</span>
+            </div>
+        </div>
+    </nav>
+
+    <!-- ============================================ -->
+    <!-- MAIN CONTENT AREA                            -->
+    <!-- ============================================ -->
+    <main class="main-content">
+        <!-- Top Header Bar -->
+        <header class="top-bar">
+            <button class="sidebar-toggle" id="sidebarToggle">
+                <i class="fas fa-bars"></i>
+            </button>
+
+            <div class="page-title-section">
+                <h2 class="page-title">{% block page_title %}Dashboard{% endblock %}</h2>
+                <p class="page-breadcrumb">
+                    <i class="fas fa-home"></i> Home {% block breadcrumb %}{% endblock %}
+                </p>
+            </div>
+
+            <div class="top-bar-right">
+                <div class="status-indicator">
+                    <span class="status-dot online"></span>
+                    <span>System Active</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Flash Messages (for success/error notifications) -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="flash-messages">
+                    {% for category, message in messages %}
+                        <div class="flash-msg flash-{{ category }}">
+                            <i class="fas {% if category == 'success' %}fa-check-circle{% elif category == 'error' %}fa-exclamation-circle{% elif category == 'warning' %}fa-triangle-exclamation{% else %}fa-info-circle{% endif %}"></i>
+                            <span>{{ message }}</span>
+                            <button class="flash-close" onclick="this.parentElement.remove()">
+                                <i class="fas fa-xmark"></i>
+                            </button>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        <!-- Page Content -->
+        <div class="content-area">
+            {% block content %}{% endblock %}
+        </div>
+    </main>
+
+    <!-- Our custom JavaScript -->
+    <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+
+    <!-- Page-specific scripts -->
+    {% block scripts %}{% endblock %}
+
+</body>
+</html>

@@ -1,0 +1,423 @@
+{% extends "base.html" %}
+
+{% block title %}Hash Analyzer{% endblock %}
+{% block page_title %}Hash Analyzer{% endblock %}
+{% block breadcrumb %}/ <span>Hash Analyzer</span>{% endblock %}
+
+{% block content %}
+
+<!-- Error Message -->
+{% if error %}
+<div class="flash-msg flash-error" style="margin-bottom: 20px;">
+    <i class="fas fa-exclamation-circle"></i>
+    <span>{{ error }}</span>
+    <button class="flash-close" onclick="this.parentElement.remove()">
+        <i class="fas fa-xmark"></i>
+    </button>
+</div>
+{% endif %}
+
+<div class="hash-layout">
+
+    <!-- ============================================ -->
+    <!-- SECTION 1: COMPUTE HASHES                    -->
+    <!-- ============================================ -->
+    <div class="card">
+        <div class="card-header">
+            <h3><i class="fas fa-fingerprint"></i> Compute File Hashes</h3>
+        </div>
+        <div class="card-body">
+            <p class="section-desc">
+                Select a file to calculate its MD5, SHA-1, and SHA-256 cryptographic hashes.
+                The file is processed in memory and <strong>never stored</strong> on the server.
+            </p>
+
+            <form method="POST" enctype="multipart/form-data" id="computeForm">
+                <input type="hidden" name="action" value="compute">
+
+                <div class="form-group">
+                    <label class="form-label" for="fileInput">
+                        <i class="fas fa-file-upload"></i> Select File
+                    </label>
+                    <div class="file-upload-area" id="dropZone">
+                        <input type="file" name="file" id="fileInput" class="file-input" required>
+                        <div class="file-upload-content">
+                            <i class="fas fa-cloud-arrow-up"></i>
+                            <p class="file-upload-text">Click to select a file or drag and drop</p>
+                            <p class="file-upload-hint">Maximum file size: 50 MB</p>
+                        </div>
+                        <div class="file-selected" id="fileSelected" style="display: none;">
+                            <i class="fas fa-file"></i>
+                            <span id="selectedFileName"></span>
+                            <span id="selectedFileSize" class="file-size-tag"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-block" id="computeBtn">
+                    <i class="fas fa-calculator"></i> Compute Hashes
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- ============================================ -->
+    <!-- HASH RESULTS (shown after computation)       -->
+    <!-- ============================================ -->
+    {% if result %}
+    <div class="card result-card" id="hashResults">
+        <div class="card-header">
+            <h3><i class="fas fa-check-circle" style="color: #10b981;"></i> Hash Results</h3>
+            <span class="badge badge-success">Computed Successfully</span>
+        </div>
+        <div class="card-body">
+            <!-- File Info -->
+            <div class="result-file-info">
+                <div class="result-file-icon">
+                    <i class="fas fa-file"></i>
+                </div>
+                <div>
+                    <p class="result-filename">{{ result.filename }}</p>
+                    <p class="result-filesize">{{ result.file_size_human }} · Computed at {{ result.computed_at }}</p>
+                </div>
+            </div>
+
+            <!-- Hash Values -->
+            <div class="hash-results-grid">
+                <div class="hash-result-item">
+                    <div class="hash-label">
+                        <span class="hash-algo-badge md5">MD5</span>
+                        <span class="hash-bits">128-bit</span>
+                    </div>
+                    <div class="hash-value-row">
+                        <code class="hash-value" id="md5Value">{{ result.md5 }}</code>
+                        <button class="btn-copy" onclick="copyHash('md5Value')" title="Copy to clipboard">
+                            <i class="fas fa-copy"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="hash-result-item">
+                    <div class="hash-label">
+                        <span class="hash-algo-badge sha1">SHA-1</span>
+                        <span class="hash-bits">160-bit</span>
+                    </div>
+                    <div class="hash-value-row">
+                        <code class="hash-value" id="sha1Value">{{ result.sha1 }}</code>
+                        <button class="btn-copy" onclick="copyHash('sha1Value')" title="Copy to clipboard">
+                            <i class="fas fa-copy"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="hash-result-item">
+                    <div class="hash-label">
+                        <span class="hash-algo-badge sha256">SHA-256</span>
+                        <span class="hash-bits">256-bit</span>
+                    </div>
+                    <div class="hash-value-row">
+                        <code class="hash-value" id="sha256Value">{{ result.sha256 }}</code>
+                        <button class="btn-copy" onclick="copyHash('sha256Value')" title="Copy to clipboard">
+                            <i class="fas fa-copy"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- ============================================ -->
+    <!-- SECTION 2: COMPARE HASHES                    -->
+    <!-- ============================================ -->
+    <div class="card">
+        <div class="card-header">
+            <h3><i class="fas fa-code-compare"></i> Compare Hash</h3>
+        </div>
+        <div class="card-body">
+            <p class="section-desc">
+                Upload a file and enter a known hash to verify whether they match.
+                This helps confirm that a file has not been altered.
+            </p>
+
+            <form method="POST" enctype="multipart/form-data" id="compareForm">
+                <input type="hidden" name="action" value="compare">
+
+                <div class="form-group">
+                    <label class="form-label" for="compareFileInput">
+                        <i class="fas fa-file-upload"></i> Select File
+                    </label>
+                    <div class="file-upload-area" id="dropZone2">
+                        <input type="file" name="compare_file" id="compareFileInput" class="file-input" required>
+                        <div class="file-upload-content">
+                            <i class="fas fa-cloud-arrow-up"></i>
+                            <p class="file-upload-text">Click to select a file</p>
+                            <p class="file-upload-hint">File to verify</p>
+                        </div>
+                        <div class="file-selected" id="compareFileSelected" style="display: none;">
+                            <i class="fas fa-file"></i>
+                            <span id="compareSelectedFileName"></span>
+                            <span id="compareSelectedFileSize" class="file-size-tag"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group form-group-algo">
+                        <label class="form-label" for="algorithm">
+                            <i class="fas fa-key"></i> Algorithm
+                        </label>
+                        <select name="algorithm" id="algorithm" class="form-select" required>
+                            <option value="md5">MD5 (32 chars)</option>
+                            <option value="sha1">SHA-1 (40 chars)</option>
+                            <option value="sha256" selected>SHA-256 (64 chars)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group form-group-hash">
+                        <label class="form-label" for="expected_hash">
+                            <i class="fas fa-hashtag"></i> Expected Hash
+                        </label>
+                        <input type="text" name="expected_hash" id="expected_hash"
+                               class="form-input" placeholder="Paste the expected hash value here..."
+                               required spellcheck="false" autocomplete="off">
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-block" id="compareBtn">
+                    <i class="fas fa-code-compare"></i> Compare Hash
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- ============================================ -->
+    <!-- COMPARISON RESULTS                           -->
+    <!-- ============================================ -->
+    {% if comparison %}
+    <div class="card result-card" id="comparisonResults">
+        <div class="card-header">
+            <h3>
+                {% if comparison.match %}
+                    <i class="fas fa-circle-check" style="color: #10b981;"></i> Comparison Result
+                {% else %}
+                    <i class="fas fa-circle-xmark" style="color: #ef4444;"></i> Comparison Result
+                {% endif %}
+            </h3>
+            <span class="badge {% if comparison.match %}badge-success{% else %}badge-error{% endif %}">
+                {{ comparison.status }}
+            </span>
+        </div>
+        <div class="card-body">
+            <!-- Match/No Match Banner -->
+            <div class="comparison-banner {% if comparison.match %}banner-match{% else %}banner-nomatch{% endif %}">
+                <div class="banner-icon">
+                    {% if comparison.match %}
+                        <i class="fas fa-shield-halved"></i>
+                    {% else %}
+                        <i class="fas fa-triangle-exclamation"></i>
+                    {% endif %}
+                </div>
+                <div class="banner-text">
+                    {% if comparison.match %}
+                        <h4>Hashes Match</h4>
+                        <p>The {{ comparison.algorithm }} hash of <strong>{{ comparison.filename }}</strong> matches the expected value.</p>
+                    {% else %}
+                        <h4>Hashes Do Not Match</h4>
+                        <p>The {{ comparison.algorithm }} hash of <strong>{{ comparison.filename }}</strong> does not match the expected value.</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- File Info -->
+            <div class="result-file-info compact">
+                <i class="fas fa-file"></i>
+                <span>{{ comparison.filename }} · {{ comparison.file_size_human }}</span>
+            </div>
+
+            <!-- Hash Comparison Detail -->
+            <div class="comparison-detail">
+                <div class="comparison-row">
+                    <span class="comparison-label">Algorithm</span>
+                    <span class="hash-algo-badge {{ comparison.algorithm|lower }}">{{ comparison.algorithm }}</span>
+                </div>
+                <div class="comparison-row">
+                    <span class="comparison-label">Computed Hash</span>
+                    <code class="hash-value small">{{ comparison.computed_hash }}</code>
+                </div>
+                <div class="comparison-row">
+                    <span class="comparison-label">Expected Hash</span>
+                    <code class="hash-value small">{{ comparison.expected_hash }}</code>
+                </div>
+            </div>
+
+            <!-- All Hashes for Reference -->
+            <details class="all-hashes-details">
+                <summary><i class="fas fa-list"></i> View all computed hashes</summary>
+                <div class="hash-results-grid compact">
+                    <div class="hash-result-item">
+                        <div class="hash-label"><span class="hash-algo-badge md5">MD5</span></div>
+                        <div class="hash-value-row">
+                            <code class="hash-value" id="cmpMd5">{{ comparison.all_hashes.md5 }}</code>
+                            <button class="btn-copy" onclick="copyHash('cmpMd5')" title="Copy"><i class="fas fa-copy"></i></button>
+                        </div>
+                    </div>
+                    <div class="hash-result-item">
+                        <div class="hash-label"><span class="hash-algo-badge sha1">SHA-1</span></div>
+                        <div class="hash-value-row">
+                            <code class="hash-value" id="cmpSha1">{{ comparison.all_hashes.sha1 }}</code>
+                            <button class="btn-copy" onclick="copyHash('cmpSha1')" title="Copy"><i class="fas fa-copy"></i></button>
+                        </div>
+                    </div>
+                    <div class="hash-result-item">
+                        <div class="hash-label"><span class="hash-algo-badge sha256">SHA-256</span></div>
+                        <div class="hash-value-row">
+                            <code class="hash-value" id="cmpSha256">{{ comparison.all_hashes.sha256 }}</code>
+                            <button class="btn-copy" onclick="copyHash('cmpSha256')" title="Copy"><i class="fas fa-copy"></i></button>
+                        </div>
+                    </div>
+                </div>
+            </details>
+        </div>
+    </div>
+    {% endif %}
+
+</div>
+
+<!-- Integrity Disclaimer -->
+<div class="info-box" style="margin-top: 24px;">
+    <i class="fas fa-info-circle"></i>
+    <span>
+        <strong>Important:</strong> Matching hashes support integrity verification — they confirm
+        the file content has not changed. However, hashes alone <strong>do not prove</strong> the
+        evidence's authenticity, origin, or chain of custody. Always document the full
+        context of your investigation.
+    </span>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+/**
+ * Hash Analyzer - Client-side interactions
+ */
+
+// === File Input Display ===
+// When a file is selected, show its name and size instead of the generic upload prompt.
+
+function setupFileInput(inputId, contentClass, selectedId, nameId, sizeId) {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+
+    input.addEventListener('change', function() {
+        const uploadArea = input.closest('.file-upload-area');
+        const content = uploadArea.querySelector('.file-upload-content');
+        const selected = document.getElementById(selectedId);
+        const nameEl = document.getElementById(nameId);
+        const sizeEl = document.getElementById(sizeId);
+
+        if (this.files && this.files[0]) {
+            const file = this.files[0];
+            nameEl.textContent = file.name;
+            sizeEl.textContent = formatBytes(file.size);
+            content.style.display = 'none';
+            selected.style.display = 'flex';
+        } else {
+            content.style.display = 'flex';
+            selected.style.display = 'none';
+        }
+    });
+}
+
+setupFileInput('fileInput', '.file-upload-content', 'fileSelected', 'selectedFileName', 'selectedFileSize');
+setupFileInput('compareFileInput', '.file-upload-content', 'compareFileSelected', 'compareSelectedFileName', 'compareSelectedFileSize');
+
+
+// === Drag and Drop ===
+document.querySelectorAll('.file-upload-area').forEach(function(zone) {
+    zone.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        zone.classList.add('dragover');
+    });
+
+    zone.addEventListener('dragleave', function() {
+        zone.classList.remove('dragover');
+    });
+
+    zone.addEventListener('drop', function(e) {
+        e.preventDefault();
+        zone.classList.remove('dragover');
+        const input = zone.querySelector('input[type="file"]');
+        if (e.dataTransfer.files.length > 0) {
+            input.files = e.dataTransfer.files;
+            input.dispatchEvent(new Event('change'));
+        }
+    });
+});
+
+
+// === Copy to Clipboard ===
+function copyHash(elementId) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+
+    const text = el.textContent.trim();
+    navigator.clipboard.writeText(text).then(function() {
+        // Show visual feedback
+        const btn = el.closest('.hash-value-row').querySelector('.btn-copy');
+        const icon = btn.querySelector('i');
+        icon.className = 'fas fa-check';
+        btn.classList.add('copied');
+
+        setTimeout(function() {
+            icon.className = 'fas fa-copy';
+            btn.classList.remove('copied');
+        }, 2000);
+    }).catch(function() {
+        // Fallback: select the text
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        window.getSelection().removeAllRanges();
+        window.getSelection().addRange(range);
+    });
+}
+
+
+// === Loading State on Submit ===
+document.querySelectorAll('form').forEach(function(form) {
+    form.addEventListener('submit', function() {
+        const btn = form.querySelector('button[type="submit"]');
+        if (btn) {
+            btn.disabled = true;
+            const icon = btn.querySelector('i');
+            if (icon) icon.className = 'fas fa-spinner fa-spin';
+            btn.querySelector('i').insertAdjacentHTML('afterend', ' Processing...');
+        }
+    });
+});
+
+
+// === Format bytes to human-readable ===
+function formatBytes(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const units = ['Bytes', 'KB', 'MB', 'GB'];
+    let i = 0;
+    let size = bytes;
+    while (size >= 1024 && i < units.length - 1) {
+        size /= 1024;
+        i++;
+    }
+    return (i === 0) ? size + ' ' + units[i] : size.toFixed(2) + ' ' + units[i];
+}
+
+
+// === Scroll to results if they exist ===
+document.addEventListener('DOMContentLoaded', function() {
+    const results = document.getElementById('hashResults') || document.getElementById('comparisonResults');
+    if (results) {
+        results.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+});
+</script>
+{% endblock %}

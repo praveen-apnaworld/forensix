@@ -1,0 +1,660 @@
+{% extends "base.html" %}
+
+{% block title %}Report Generator{% endblock %}
+{% block page_title %}Forensic Report Generator{% endblock %}
+{% block breadcrumb %}/ <span>Report Generator</span>{% endblock %}
+
+{% block content %}
+<div class="reports-container">
+
+    <!-- FLASH NOTIFICATIONS -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+            <div class="alert alert-{{ 'success' if category == 'success' else 'danger' if category == 'error' else 'info' }}" style="margin-bottom: 20px;">
+                <i class="fas {{ 'fa-check-circle' if category == 'success' else 'fa-triangle-exclamation' if category == 'error' else 'fa-info-circle' }}"></i>
+                {{ message }}
+            </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <!-- FORENSIC REPORT GENERATION CONTROLS -->
+    <div class="card" style="margin-bottom: 24px;">
+        <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <div>
+                <h3 style="margin-bottom: 2px;">
+                    <i class="fas fa-file-pdf text-cyan"></i> Generate Examination Report
+                </h3>
+                <span class="file-hint">Synthesize case-scoped evidence analysis, integrity fingerprints, and chronological timelines into a professional court-ready PDF.</span>
+            </div>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                <button type="button" class="btn btn-secondary btn-sm" onclick="openModal('newCaseModal')" title="Create a new distinct forensic case">
+                    <i class="fas fa-folder-plus text-cyan"></i> New Case
+                </button>
+                {% if cases and cases|length > 0 %}
+                <button type="button" class="btn btn-secondary btn-sm" onclick="openModal('registerEvidenceModal')" title="Register an evidence file to a case">
+                    <i class="fas fa-file-circle-plus text-cyan"></i> Register Evidence
+                </button>
+                {% endif %}
+                <form method="POST" action="{{ url_for('create_sample_case_report') }}" style="display: inline;">
+                    <button type="submit" class="btn btn-secondary btn-sm" title="Register a sample forensic case with preloaded evidence files for immediate demonstration">
+                        <i class="fas fa-flask"></i> Preload Demonstration Case
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <div class="card-body">
+            {% if error %}
+            <div class="alert alert-danger" style="margin-bottom: 20px;">
+                <i class="fas fa-triangle-exclamation"></i> {{ error }}
+            </div>
+            {% endif %}
+
+            <form method="POST" action="{{ url_for('generate_report_post') }}" id="reportForm" onsubmit="return validateReportForm();">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; margin-bottom: 20px;">
+                    
+                    <!-- Case Selection -->
+                    <div>
+                        <label for="case_id" style="display: block; font-size: 13px; font-weight: 600; color: #94a3b8; margin-bottom: 6px;">
+                            <i class="fas fa-folder-open text-cyan"></i> Select Investigation Case: <span style="color: #ef4444;">*</span>
+                        </label>
+                        {% if cases and cases|length > 0 %}
+                        <select class="form-control" id="case_id" name="case_id" required onchange="handleCaseChange(this.value)" style="background: #0f172a; border-color: #334155; color: #f8fafc;">
+                            <option value="" disabled {% if not selected_case_id %}selected{% endif %}>-- Choose an Investigation Case --</option>
+                            {% for c in cases %}
+                            <option value="{{ c['id'] }}" {% if selected_case_id and (selected_case_id|string == c['id']|string or selected_case_id == c['case_id']) %}selected{% endif %}>
+                                {{ c['case_id'] }} — {{ c['title'] }} ({{ c['investigator'] }})
+                            </option>
+                            {% endfor %}
+                        </select>
+                        {% else %}
+                        <div style="background: #0f172a; border: 1px dashed #475569; padding: 12px; border-radius: 6px; color: #94a3b8; font-size: 12.5px;">
+                            <i class="fas fa-info-circle text-cyan"></i> No cases registered yet.
+                            <br/>Click the <strong>New Case</strong> or <strong>Preload Demonstration Case</strong> button above to get started.
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <!-- Evidence Selection Scope -->
+                    <div>
+                        <label style="display: block; font-size: 13px; font-weight: 600; color: #94a3b8; margin-bottom: 6px;">
+                            <i class="fas fa-filter text-cyan"></i> Evidence Selection Scope: <span style="color: #ef4444;">*</span>
+                        </label>
+                        <div style="display: flex; gap: 18px; margin-top: 10px; flex-wrap: wrap;">
+                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; color: #f8fafc; font-size: 13px;">
+                                <input type="radio" name="evidence_scope" value="ALL" id="scope_all" checked onchange="toggleEvidenceScope('ALL')" style="cursor: pointer; width: 15px; height: 15px;">
+                                <span><strong>All Evidence</strong> in this case</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; color: #f8fafc; font-size: 13px;">
+                                <input type="radio" name="evidence_scope" value="SELECTED" id="scope_selected" onchange="toggleEvidenceScope('SELECTED')" style="cursor: pointer; width: 15px; height: 15px;">
+                                <span><strong>Selected Evidence Items</strong> only</span>
+                            </label>
+                        </div>
+                        <span class="file-hint" id="scope_desc_text" style="display: block; margin-top: 6px; font-size: 11.5px; color: #94a3b8;">
+                            Include all digital evidence files cataloged under the selected investigation.
+                        </span>
+                    </div>
+
+                    <!-- Report Title -->
+                    <div>
+                        <label for="report_title" style="display: block; font-size: 13px; font-weight: 600; color: #94a3b8; margin-bottom: 6px;">
+                            <i class="fas fa-heading text-cyan"></i> Report Title:
+                        </label>
+                        <input type="text" class="form-control" id="report_title" name="report_title" 
+                               value="Digital Forensics Examination Report" 
+                               placeholder="e.g. Digital Forensics Examination Report"
+                               style="background: #0f172a; border-color: #334155; color: #f8fafc;" required>
+                    </div>
+
+                    <!-- Lead Investigator -->
+                    <div>
+                        <label for="investigator_name" style="display: block; font-size: 13px; font-weight: 600; color: #94a3b8; margin-bottom: 6px;">
+                            <i class="fas fa-user-shield text-cyan"></i> Lead Forensic Examiner:
+                        </label>
+                        <input type="text" class="form-control" id="investigator_name" name="investigator_name" 
+                               value="{{ default_investigator or 'Lead Forensic Examiner' }}" 
+                               placeholder="Name of investigating examiner"
+                               style="background: #0f172a; border-color: #334155; color: #f8fafc;" required>
+                    </div>
+
+                    <!-- Agency / Laboratory -->
+                    <div>
+                        <label for="organization" style="display: block; font-size: 13px; font-weight: 600; color: #94a3b8; margin-bottom: 6px;">
+                            <i class="fas fa-building-columns text-cyan"></i> Agency / Laboratory:
+                        </label>
+                        <input type="text" class="form-control" id="organization" name="organization" 
+                               value="{{ default_org or 'ForensiX Cyber Forensics Laboratory' }}" 
+                               placeholder="Laboratory or agency name"
+                               style="background: #0f172a; border-color: #334155; color: #f8fafc;">
+                    </div>
+
+                    <!-- Custom Keyword Search Query -->
+                    <div>
+                        <label for="keywords_query" style="display: block; font-size: 13px; font-weight: 600; color: #94a3b8; margin-bottom: 6px;">
+                            <i class="fas fa-magnifying-glass text-cyan"></i> Evidence Target Keywords (Optional):
+                        </label>
+                        <input type="text" class="form-control" id="keywords_query" name="keywords_query" 
+                               value="confidential, password, exfiltrate, flag, key" 
+                               placeholder="Comma-separated keywords to scan"
+                               style="background: #0f172a; border-color: #334155; color: #f8fafc;">
+                    </div>
+                </div>
+
+                <!-- DYNAMIC EVIDENCE CHECKLIST PICKER (Visible when 'SELECTED' is chosen) -->
+                <div id="evidence_picker_container" style="display: none; background: #0b1329; border: 1px solid #1e293b; border-left: 3px solid #38bdf8; border-radius: 6px; padding: 16px; margin-bottom: 22px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px;">
+                        <div>
+                            <span style="font-size: 13px; font-weight: 600; color: #38bdf8;">
+                                <i class="fas fa-boxes-stacked"></i> Select Specific Evidence Items for this Case
+                            </span>
+                            <span id="evidence_status_badge" class="badge badge-secondary" style="margin-left: 8px; font-size: 11px;">0 loaded</span>
+                        </div>
+                        <div style="display: flex; gap: 8px;">
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="selectAllEvidence(true)" style="padding: 3px 9px; font-size: 11.5px;">
+                                <i class="fas fa-check-double"></i> Select All
+                            </button>
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="selectAllEvidence(false)" style="padding: 3px 9px; font-size: 11.5px;">
+                                <i class="fas fa-ban"></i> Deselect All
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="evidence_loading" style="display: none; color: #94a3b8; font-size: 12.5px; padding: 14px 0;">
+                        <i class="fas fa-spinner fa-spin text-cyan"></i> Retrieving registered evidence items for the selected case...
+                    </div>
+
+                    <div id="evidence_list_wrapper" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; max-height: 260px; overflow-y: auto; padding-right: 4px;">
+                        <!-- Checkboxes populated dynamically by JavaScript -->
+                    </div>
+
+                    <div id="evidence_empty_msg" style="display: none; background: #1e293b; border: 1px dashed #475569; padding: 14px; border-radius: 6px; color: #f59e0b; font-size: 12.5px;">
+                        <i class="fas fa-circle-exclamation"></i> <strong>No evidence items registered under this case yet.</strong>
+                        <div style="color: #94a3b8; margin-top: 4px;">
+                            Please use the <strong>Register Evidence</strong> button above or upload evidence files for this case first.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Privacy & Security Authorizations -->
+                <div style="background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 14px; margin-bottom: 22px;">
+                    <div style="font-size: 12.5px; font-weight: 600; color: #cbd5e1; margin-bottom: 8px;">
+                        <i class="fas fa-shield-halved text-cyan"></i> Privacy & Forensic Disclosure Controls:
+                    </div>
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; color: #94a3b8; font-size: 13px; margin: 0;">
+                        <input type="checkbox" name="include_gps" id="include_gps" value="1" style="width: 16px; height: 16px; cursor: pointer;">
+                        <span>
+                            <strong style="color: #f8fafc;">Include EXIF GPS Geolocation Data:</strong> 
+                            Authorize inclusion of sensitive geographic coordinates where present. By default, coordinates are withheld/redacted.
+                        </span>
+                    </label>
+                </div>
+
+                <!-- Action Button -->
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <button type="submit" class="btn btn-primary" id="btnSubmitReport" {% if not cases or cases|length == 0 %}disabled{% endif %}>
+                        <i class="fas fa-file-pdf"></i> Generate Forensic PDF Report
+                    </button>
+                    {% if not cases or cases|length == 0 %}
+                    <span style="font-size: 12px; color: #f59e0b;">
+                        <i class="fas fa-circle-exclamation"></i> Please create or preload a case to enable report generation.
+                    </span>
+                    {% endif %}
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- FORENSIC ACCURACY DISCLAIMER -->
+    <div class="modal-banner banner-info" style="margin-bottom: 24px;">
+        <i class="fas fa-scale-balanced"></i>
+        <div>
+            <strong>Forensic Report Integrity Standard</strong>
+            <p style="margin-top: 4px; font-size: 12px; line-height: 1.5; color: #cbd5e1;">
+                Generated reports strictly isolate results to the selected investigation case and chosen evidence files. Unanalyzed evidence items are explicitly labeled <code>Not Analyzed</code>, and missing metadata is labeled <code>Not Recorded in File</code>. No statistics or timestamps are invented.
+            </p>
+        </div>
+    </div>
+
+    <!-- GENERATED REPORT ARCHIVE & HISTORY -->
+    <div class="card">
+        <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <div>
+                <h3 style="margin-bottom: 2px;">
+                    <i class="fas fa-clock-rotate-left text-cyan"></i> Generated Report Archive & History
+                </h3>
+                <span class="file-hint">Historical register of all formal investigation reports created by examiners. Filterable by case, ID, and date.</span>
+            </div>
+            <span class="badge badge-info" style="font-size: 12px;">
+                {{ reports|length }} Archived Report(s)
+            </span>
+        </div>
+
+        <div class="card-body">
+            <!-- REPORT HISTORY FILTER CONTROLS -->
+            <div style="background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 14px; margin-bottom: 18px;">
+                <form method="GET" action="{{ url_for('reports') }}" style="display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end;">
+                    <div style="flex: 1; min-width: 200px;">
+                        <label style="display: block; font-size: 12px; font-weight: 600; color: #94a3b8; margin-bottom: 4px;">
+                            <i class="fas fa-folder-open text-cyan"></i> Filter by Case:
+                        </label>
+                        <select name="filter_case_id" class="form-control" style="background: #1e293b; border-color: #475569; color: #f8fafc; font-size: 12.5px; padding: 6px 10px;">
+                            <option value="">-- All Cases --</option>
+                            {% for c in cases %}
+                            <option value="{{ c['id'] }}" {% if filter_case_id|string == c['id']|string or filter_case_id == c['case_id'] %}selected{% endif %}>
+                                {{ c['case_id'] }} — {{ c['title'] }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div style="flex: 1; min-width: 180px;">
+                        <label style="display: block; font-size: 12px; font-weight: 600; color: #94a3b8; margin-bottom: 4px;">
+                            <i class="fas fa-barcode text-cyan"></i> Filter by Report ID / Title:
+                        </label>
+                        <input type="text" name="filter_report_id" value="{{ filter_report_id or '' }}" placeholder="e.g. RPT-202611-..." class="form-control" style="background: #1e293b; border-color: #475569; color: #f8fafc; font-size: 12.5px; padding: 6px 10px;">
+                    </div>
+
+                    <div style="flex: 1; min-width: 150px;">
+                        <label style="display: block; font-size: 12px; font-weight: 600; color: #94a3b8; margin-bottom: 4px;">
+                            <i class="fas fa-calendar-day text-cyan"></i> Generation Date:
+                        </label>
+                        <input type="date" name="filter_date" value="{{ filter_date or '' }}" class="form-control" style="background: #1e293b; border-color: #475569; color: #f8fafc; font-size: 12.5px; padding: 6px 10px;">
+                    </div>
+
+                    <div style="display: flex; gap: 8px;">
+                        <button type="submit" class="btn btn-primary btn-sm" style="padding: 7px 14px;">
+                            <i class="fas fa-filter"></i> Apply Filter
+                        </button>
+                        {% if filter_case_id or filter_report_id or filter_date %}
+                        <a href="{{ url_for('reports') }}" class="btn btn-secondary btn-sm" style="padding: 7px 14px;" title="Reset filters">
+                            <i class="fas fa-rotate-left"></i> Reset
+                        </a>
+                        {% endif %}
+                    </div>
+                </form>
+            </div>
+
+            <!-- ARCHIVE TABLE -->
+            {% if reports and reports|length > 0 %}
+            <div style="overflow-x: auto;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Report Tracking ID</th>
+                            <th>Case Reference</th>
+                            <th>Report Title & Filename</th>
+                            <th>Evidence Count</th>
+                            <th>Examiner</th>
+                            <th>File Size</th>
+                            <th>Generated At</th>
+                            <th style="text-align: right;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for r in reports %}
+                        <tr>
+                            <td>
+                                <code>{{ r['report_id'] or ('RPT-' ~ r['id']) }}</code>
+                            </td>
+                            <td>
+                                <span class="badge badge-secondary">{{ r['case_number'] }}</span>
+                                <div style="font-size: 11.5px; color: #94a3b8; margin-top: 2px;">{{ r['case_title'] }}</div>
+                            </td>
+                            <td>
+                                <div style="font-weight: 600; color: #f8fafc;">
+                                    <i class="fas fa-file-pdf" style="color: #ef4444; margin-right: 6px;"></i>
+                                    {{ r['report_title'] or r['report_filename'] }}
+                                </div>
+                                <div style="font-size: 11px; color: #64748b; font-family: monospace;">
+                                    {{ r['report_filename'] }}
+                                </div>
+                            </td>
+                            <td>
+                                <span class="badge badge-info" style="font-size: 11.5px;">
+                                    <i class="fas fa-boxes-stacked" style="font-size: 10px;"></i> {{ r['evidence_count'] or 0 }} Item(s)
+                                </span>
+                            </td>
+                            <td>
+                                <span style="font-size: 12.5px; color: #cbd5e1;">
+                                    <i class="fas fa-user-check text-cyan" style="font-size: 11px;"></i> {{ r['generated_by'] or 'System' }}
+                                </span>
+                            </td>
+                            <td style="font-family: monospace; font-size: 12px;">
+                                {% if r['file_size'] %}
+                                    {{ (r['file_size'] / 1024)|round(1) }} KB
+                                {% else %}
+                                    &mdash;
+                                {% endif %}
+                            </td>
+                            <td style="font-size: 12px; color: #94a3b8;">
+                                {{ r['generated_at'][:19] }}
+                            </td>
+                            <td style="text-align: right;">
+                                <div style="display: flex; gap: 8px; justify-content: flex-end;">
+                                    <a href="{{ url_for('view_report_pdf', report_id=r['id']) }}" target="_blank" class="btn btn-secondary btn-sm" title="View PDF report inline">
+                                        <i class="fas fa-eye"></i> View
+                                    </a>
+                                    <a href="{{ url_for('download_report', report_id=r['id']) }}" class="btn btn-primary btn-sm" title="Download PDF file to local disk">
+                                        <i class="fas fa-download"></i> Download
+                                    </a>
+                                    <button type="button" class="btn btn-danger btn-sm" title="Permanently delete this forensic report"
+                                            onclick="confirmDeleteReport('{{ r['id'] }}', '{{ r['report_id'] or ('RPT-' ~ r['id']) }}', '{{ (r['report_title'] or r['report_filename'])|replace('\'', '\\\'')|replace('\"', '&quot;') }}')">
+                                        <i class="fas fa-trash"></i> Delete
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="empty-state" style="padding: 40px; text-align: center;">
+                <i class="fas fa-file-circle-exclamation" style="font-size: 40px; color: #64748b; margin-bottom: 12px;"></i>
+                <h4 style="color: #cbd5e1; margin-bottom: 6px;">No Generated Reports Found</h4>
+                <p style="color: #94a3b8; font-size: 13.5px; max-width: 500px; margin: 0 auto;">
+                    {% if filter_case_id or filter_report_id or filter_date %}
+                    No reports match the current filter criteria. Click <strong>Reset</strong> to view all archived reports.
+                    {% else %}
+                    Select an active investigation case and click <strong>Generate Forensic PDF Report</strong> above to produce a formal court-ready examination document.
+                    {% endif %}
+                </p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+</div>
+
+<!-- MODAL 1: CREATE NEW CASE -->
+<div class="modal-overlay" id="newCaseModal">
+    <div class="modal" style="max-width: 520px; background: #1e293b; border: 1px solid #334155; border-radius: 8px; color: #f8fafc;">
+        <div class="modal-header" style="border-bottom: 1px solid #334155; padding: 16px 20px; display: flex; justify-content: space-between; align-items: center;">
+            <h3 style="margin: 0; font-size: 16px; color: #38bdf8;"><i class="fas fa-folder-plus"></i> Create New Forensic Case</h3>
+            <button class="modal-close" type="button" onclick="closeModal('newCaseModal')" style="background: none; border: none; color: #94a3b8; font-size: 18px; cursor: pointer;">
+                <i class="fas fa-xmark"></i>
+            </button>
+        </div>
+        <form method="POST" action="{{ url_for('create_case') }}">
+            <div class="modal-body" style="padding: 20px;">
+                <div style="margin-bottom: 14px;">
+                    <label style="display: block; font-size: 13px; font-weight: 600; color: #94a3b8; margin-bottom: 6px;">
+                        Case ID <span style="color: #ef4444;">*</span>:
+                    </label>
+                    <input type="text" name="case_id" required placeholder="e.g. CASE-2026-ALPHA" class="form-control" style="background: #0f172a; border-color: #334155; color: #f8fafc;" />
+                </div>
+                <div style="margin-bottom: 14px;">
+                    <label style="display: block; font-size: 13px; font-weight: 600; color: #94a3b8; margin-bottom: 6px;">
+                        Case Title <span style="color: #ef4444;">*</span>:
+                    </label>
+                    <input type="text" name="title" required placeholder="e.g. Unauthorized Financial Data Exfiltration" class="form-control" style="background: #0f172a; border-color: #334155; color: #f8fafc;" />
+                </div>
+                <div style="margin-bottom: 14px;">
+                    <label style="display: block; font-size: 13px; font-weight: 600; color: #94a3b8; margin-bottom: 6px;">
+                        Lead Forensic Investigator:
+                    </label>
+                    <input type="text" name="investigator" value="{{ default_investigator or 'Lead Forensic Examiner' }}" class="form-control" style="background: #0f172a; border-color: #334155; color: #f8fafc;" />
+                </div>
+                <div style="margin-bottom: 14px;">
+                    <label style="display: block; font-size: 13px; font-weight: 600; color: #94a3b8; margin-bottom: 6px;">
+                        Description / Scope:
+                    </label>
+                    <textarea name="description" rows="3" placeholder="Summary of investigation objectives..." class="form-control" style="background: #0f172a; border-color: #334155; color: #f8fafc;"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer" style="border-top: 1px solid #334155; padding: 12px 20px; display: flex; justify-content: flex-end; gap: 10px;">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('newCaseModal')">Cancel</button>
+                <button type="submit" class="btn btn-primary"><i class="fas fa-check"></i> Register Case</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- MODAL 2: REGISTER EVIDENCE TO CASE -->
+<div class="modal-overlay" id="registerEvidenceModal">
+    <div class="modal" style="max-width: 540px; background: #1e293b; border: 1px solid #334155; border-radius: 8px; color: #f8fafc;">
+        <div class="modal-header" style="border-bottom: 1px solid #334155; padding: 16px 20px; display: flex; justify-content: space-between; align-items: center;">
+            <h3 style="margin: 0; font-size: 16px; color: #38bdf8;"><i class="fas fa-file-circle-plus"></i> Register Evidence Item</h3>
+            <button class="modal-close" type="button" onclick="closeModal('registerEvidenceModal')" style="background: none; border: none; color: #94a3b8; font-size: 18px; cursor: pointer;">
+                <i class="fas fa-xmark"></i>
+            </button>
+        </div>
+        <form method="POST" action="{{ url_for('register_evidence') }}" enctype="multipart/form-data">
+            <div class="modal-body" style="padding: 20px;">
+                <div style="margin-bottom: 14px;">
+                    <label style="display: block; font-size: 13px; font-weight: 600; color: #94a3b8; margin-bottom: 6px;">
+                        Target Investigation Case <span style="color: #ef4444;">*</span>:
+                    </label>
+                    <select name="case_id" required class="form-control" style="background: #0f172a; border-color: #334155; color: #f8fafc;">
+                        {% for c in cases %}
+                        <option value="{{ c['id'] }}">{{ c['case_id'] }} — {{ c['title'] }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div style="margin-bottom: 14px;">
+                    <label style="display: block; font-size: 13px; font-weight: 600; color: #94a3b8; margin-bottom: 6px;">
+                        Select Evidence File <span style="color: #ef4444;">*</span>:
+                    </label>
+                    <input type="file" name="evidence_file" required class="form-control" style="background: #0f172a; border-color: #334155; color: #f8fafc; padding: 7px 10px;" />
+                </div>
+                <div style="margin-bottom: 14px;">
+                    <label style="display: block; font-size: 13px; font-weight: 600; color: #94a3b8; margin-bottom: 6px;">
+                        Evidence Description:
+                    </label>
+                    <input type="text" name="description" placeholder="e.g. Workstation audit log or suspicious email attachment" class="form-control" style="background: #0f172a; border-color: #334155; color: #f8fafc;" />
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px;">
+                    <div>
+                        <label style="display: block; font-size: 12.5px; font-weight: 600; color: #94a3b8; margin-bottom: 6px;">
+                            Acquisition Method:
+                        </label>
+                        <input type="text" name="acquisition_method" value="Logical Acquisition" class="form-control" style="background: #0f172a; border-color: #334155; color: #f8fafc;" />
+                    </div>
+                    <div>
+                        <label style="display: block; font-size: 12.5px; font-weight: 600; color: #94a3b8; margin-bottom: 6px;">
+                            Evidence Source:
+                        </label>
+                        <input type="text" name="source" value="Corporate Workstation Seizure" class="form-control" style="background: #0f172a; border-color: #334155; color: #f8fafc;" />
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer" style="border-top: 1px solid #334155; padding: 12px 20px; display: flex; justify-content: flex-end; gap: 10px;">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('registerEvidenceModal')">Cancel</button>
+                <button type="submit" class="btn btn-primary"><i class="fas fa-upload"></i> Upload & Register Evidence</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- MODAL 3: CONFIRM DELETE REPORT -->
+<div class="modal-overlay" id="deleteReportModal">
+    <div class="modal" style="max-width: 490px; background: #1e293b; border: 1px solid #334155; border-top: 3px solid #ef4444; border-radius: 8px; color: #f8fafc; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);">
+        <div class="modal-header" style="border-bottom: 1px solid #334155; padding: 16px 20px; display: flex; justify-content: space-between; align-items: center;">
+            <h3 style="margin: 0; font-size: 16px; color: #ef4444; display: flex; align-items: center; gap: 8px;">
+                <i class="fas fa-trash-can"></i> Delete Report?
+            </h3>
+            <button class="modal-close" type="button" onclick="closeModal('deleteReportModal')" style="background: none; border: none; color: #94a3b8; font-size: 18px; cursor: pointer;">
+                <i class="fas fa-xmark"></i>
+            </button>
+        </div>
+        <form method="POST" id="deleteReportForm" action="">
+            <div class="modal-body" style="padding: 20px;">
+                <p style="color: #cbd5e1; font-size: 13.5px; line-height: 1.5; margin-bottom: 16px;">
+                    Are you sure you want to permanently delete this forensic report?
+                </p>
+
+                <div style="background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 14px; margin-bottom: 16px;">
+                    <div style="display: flex; margin-bottom: 8px; font-size: 12.5px;">
+                        <span style="width: 100px; color: #94a3b8; font-weight: 600;">Report ID:</span>
+                        <code id="deleteModalReportId" style="color: #38bdf8; font-size: 12px;"></code>
+                    </div>
+                    <div style="display: flex; font-size: 12.5px;">
+                        <span style="width: 100px; color: #94a3b8; font-weight: 600;">Report Title:</span>
+                        <span id="deleteModalReportTitle" style="color: #f8fafc; font-weight: 600; flex: 1; word-break: break-word;"></span>
+                    </div>
+                </div>
+
+                <div style="font-size: 12px; color: #f87171; line-height: 1.5; display: flex; align-items: flex-start; gap: 8px;">
+                    <i class="fas fa-circle-exclamation" style="margin-top: 2px;"></i>
+                    <span>This action will permanently delete the PDF file and remove its database index. An immutable audit record will be logged.</span>
+                </div>
+            </div>
+            <div class="modal-footer" style="border-top: 1px solid #334155; padding: 14px 20px; display: flex; justify-content: flex-end; gap: 10px;">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('deleteReportModal')">Cancel</button>
+                <button type="submit" class="btn btn-danger" id="btnConfirmDelete">
+                    <i class="fas fa-trash"></i> Confirm Delete
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- CLIENT JAVASCRIPT LOGIC -->
+<script>
+let loadedEvidenceCache = {};
+
+function openModal(modalId) {
+    const el = document.getElementById(modalId);
+    if (el) el.classList.add('show');
+}
+
+function closeModal(modalId) {
+    const el = document.getElementById(modalId);
+    if (el) el.classList.remove('show');
+}
+
+function confirmDeleteReport(reportPk, reportId, reportTitle) {
+    const form = document.getElementById('deleteReportForm');
+    const idEl = document.getElementById('deleteModalReportId');
+    const titleEl = document.getElementById('deleteModalReportTitle');
+
+    if (form) form.action = '/reports/delete/' + encodeURIComponent(reportPk);
+    if (idEl) idEl.textContent = reportId;
+    if (titleEl) titleEl.textContent = reportTitle;
+
+    openModal('deleteReportModal');
+}
+
+function toggleEvidenceScope(scope) {
+    const container = document.getElementById('evidence_picker_container');
+    const descText = document.getElementById('scope_desc_text');
+    if (scope === 'SELECTED') {
+        container.style.display = 'block';
+        descText.textContent = 'Report will include ONLY explicitly chosen evidence files from this case.';
+        const caseSelect = document.getElementById('case_id');
+        if (caseSelect && caseSelect.value) {
+            loadCaseEvidence(caseSelect.value);
+        }
+    } else {
+        container.style.display = 'none';
+        descText.textContent = 'Include all digital evidence files cataloged under the selected investigation.';
+    }
+}
+
+function handleCaseChange(caseId) {
+    const isSelectedScope = document.getElementById('scope_selected').checked;
+    if (isSelectedScope) {
+        loadCaseEvidence(caseId);
+    }
+}
+
+async function loadCaseEvidence(caseId) {
+    if (!caseId) return;
+
+    const wrapper = document.getElementById('evidence_list_wrapper');
+    const loading = document.getElementById('evidence_loading');
+    const emptyMsg = document.getElementById('evidence_empty_msg');
+    const badge = document.getElementById('evidence_status_badge');
+
+    wrapper.innerHTML = '';
+    emptyMsg.style.display = 'none';
+    loading.style.display = 'block';
+
+    try {
+        const response = await fetch('/api/cases/' + encodeURIComponent(caseId) + '/evidence');
+        if (!response.ok) {
+            throw new Error('Server returned ' + response.status);
+        }
+        const data = await response.json();
+        loading.style.display = 'none';
+
+        const evList = data.evidence || [];
+        badge.textContent = evList.length + ' item(s) available';
+
+        if (evList.length === 0) {
+            emptyMsg.style.display = 'block';
+            return;
+        }
+
+        let html = '';
+        evList.forEach(ev => {
+            html += `
+                <label style="display: flex; align-items: flex-start; gap: 10px; background: #0f172a; border: 1px solid #334155; padding: 10px 12px; border-radius: 6px; cursor: pointer; transition: border-color 0.15s ease;">
+                    <input type="checkbox" name="evidence_ids" value="${ev.id}" checked style="width: 16px; height: 16px; margin-top: 3px; cursor: pointer;">
+                    <div style="flex: 1; min-width: 0;">
+                        <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px;">
+                            <span class="badge badge-info" style="font-size: 10.5px; padding: 2px 6px;">${escapeHtml(ev.evidence_id || ('EVD-' + ev.id))}</span>
+                            <span style="font-size: 11px; color: #94a3b8; font-family: monospace;">${escapeHtml(ev.file_type || 'BIN')}</span>
+                        </div>
+                        <div style="font-size: 12.5px; font-weight: 600; color: #f8fafc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(ev.filename)}">
+                            ${escapeHtml(ev.filename)}
+                        </div>
+                        <div style="font-size: 11px; color: #64748b; margin-top: 2px;">
+                            Size: ${escapeHtml(ev.file_size_formatted || (ev.file_size + ' B'))}
+                        </div>
+                    </div>
+                </label>
+            `;
+        });
+        wrapper.innerHTML = html;
+    } catch (err) {
+        loading.style.display = 'none';
+        wrapper.innerHTML = `<div style="color: #ef4444; font-size: 12px; padding: 10px;"><i class="fas fa-triangle-exclamation"></i> Error loading case evidence: ${escapeHtml(err.message)}</div>`;
+    }
+}
+
+function selectAllEvidence(checked) {
+    const checkboxes = document.querySelectorAll('input[name="evidence_ids"]');
+    checkboxes.forEach(cb => cb.checked = checked);
+}
+
+function validateReportForm() {
+    const caseSelect = document.getElementById('case_id');
+    if (!caseSelect || !caseSelect.value) {
+        alert('Please select an investigation case to generate a report.');
+        return false;
+    }
+
+    const isSelectedScope = document.getElementById('scope_selected').checked;
+    if (isSelectedScope) {
+        const checkedBoxes = document.querySelectorAll('input[name="evidence_ids"]:checked');
+        if (checkedBoxes.length === 0) {
+            alert('Please select at least one evidence item to include in the report.');
+            return false;
+        }
+    }
+    return true;
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+// On initial page load, if a case is pre-selected and SELECTED scope is active, load evidence
+document.addEventListener('DOMContentLoaded', function() {
+    const caseSelect = document.getElementById('case_id');
+    const isSelectedScope = document.getElementById('scope_selected').checked;
+    if (caseSelect && caseSelect.value && isSelectedScope) {
+        loadCaseEvidence(caseSelect.value);
+    }
+});
+</script>
+{% endblock %}

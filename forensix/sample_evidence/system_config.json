@@ -1,0 +1,22 @@
+{
+  "system_id": "SYS-FORENSIX-SRV01",
+  "environment": "Forensic Laboratory Evidence Network",
+  "database": {
+    "host": "127.0.0.1",
+    "port": 5432,
+    "name": "forensix_evidence_vault",
+    "user": "forensic_db_admin",
+    "api_key": "api_key=sk_live_9384918239012398"
+  },
+  "security_policy": {
+    "case_sensitive_auth": true,
+    "max_login_attempts": 3,
+    "admin_email": "security@forensix.local",
+    "password_min_length": 14
+  },
+  "authorized_investigators": [
+    "Marcus Vance",
+    "Sarah Chen",
+    "Agent Rossi"
+  ]
+}
